@@ -158,7 +158,6 @@ void Cloth::build_constraints(int num_x, int num_y) {
             }
         }
     }
-    // 0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  19  1   2   5   6   9  10  13  14  17  18
 
     for (int pass_nr = 0; pass_nr < 2; ++pass_nr) {
         for (int xi = 0; xi < (num_x + 1 - pass_nr) / 2; ++xi) {
@@ -169,8 +168,6 @@ void Cloth::build_constraints(int num_x, int num_y) {
             }
         }
     }
-
-    // 0   4   1   5   2   6   3   7   8  12   9  13  10  14  11  15   4   8   5   9   6  10   7  11  12  16  13  17  14  18  15  19 
 
     for (int xi = 0; xi < num_x; ++xi) {
         for (int yi = 0; yi < num_y; ++yi) {

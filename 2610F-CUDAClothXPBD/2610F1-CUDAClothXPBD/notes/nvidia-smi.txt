@@ -1,0 +1,175 @@
+
+nvidia-smi
+
+***
+sudo apt install linux-modules-nvidia-595-generic
+
+lspci | grep -i nvidia
+
+3. Check Secure Boot NOUSE
+mokutil --sb-state
+
+dkms status
+
+sudo dmesg | grep -i nvidia | tail -20
+
+driver but not ok
+https://www.nvidia.com/en-us/drivers/details/283699/
+
+The nvidia-smi error usually means the kernel driver isn’t loaded, either because it was never installed, didn’t build for your current kernel, or is being blocked. The RTX 4050 is a laptop GPU, so hybrid graphics settings can also cause this. I can’t reach your machine from here, so work through these checks in order.
+
+1. Check whether the system sees the GPU at all
+
+bash
+lspci | grep -i nvidia
+If nothing shows up, the GPU may be disabled in BIOS/UEFI (look for a discrete GPU or hybrid graphics option) or set to iGPU-only mode. Enable it and reboot.
+If you see a line like NVIDIA Corporation AD107M [GeForce RTX 4050 Max-Q / Mobile], the hardware is detected, so continue.
+
+2. Check whether the driver module is loaded
+
+bash
+lsmod | grep -E "nvidia|nouveau"
+dmesg | grep -i nvidia | tail -20
+If nouveau is loaded and no nvidia module is, the open-source driver is taking the GPU. Blacklist it:
+bash
+  echo -e "blacklist nouveau\noptions nouveau modeset=0" | sudo tee /etc/modprobe.d/blacklist-nouveau.conf
+  sudo update-initramfs -u
+  sudo reboot
+
+3. Check Secure Boot
+
+bash
+mokutil --sb-state
+
+If Secure Boot is enabled, the NVIDIA kernel module may be rejected because it isn’t signed. Either disable Secure Boot in BIOS, or enroll the module signing key (the distro installer usually prompts for this when you install the driver).
+
+4. Check whether the driver was built for your current kernel
+
+bash
+dkms status
+uname -r
+
+If the NVIDIA module is missing or built for an older kernel (common after a kernel update), rebuild it:
+
+bash
+sudo dkms autoinstall
+
+5. Install or reinstall the driver
+On Ubuntu/Debian/Pop!_OS:
+
+bash
+ubuntu-drivers devices            # shows the recommended driver
+sudo ubuntu-drivers autoinstall   # or: sudo apt install nvidia-driver-550
+sudo reboot
+
+The RTX 4050 needs a fairly recent driver (roughly 525 or newer), so pick the recommended one.
+
+6. Laptop hybrid graphics (if applicable)
+
+bash
+prime-select query
+sudo prime-select nvidia    # or: sudo prime-select on-demand
+sudo reboot
+
+On Pop!_OS, use system76-power instead of prime-select.
+
+7. Verify
+
+bash
+nvidia-smi
+cat /proc/driver/nvidia/version
+
+If you still get the error, send me the output of lspci | grep -i nvidia, dkms status, mokutil --sb-state, and dmesg | grep -i nvidia | tail -20, plus your distro and whether you recently updated the kernel or driver. Those will usually show which step is failing.
+
+lsmod | grep -E "nvidia|nouveau" dmesg | grep -i nvidia | tail -20
+
+I can’t run those on your machine, so paste the output here. Run them in your terminal, then copy whatever comes back:
+
+bash
+lsmod | grep -E "nvidia|nouveau"
+dmesg | grep -i nvidia | tail -20
+
+Here’s how to read the likely results:
+
+No output from lsmod: No NVIDIA or nouveau module is loaded. Check lspci | grep -i nvidia next. If the GPU shows up there, the driver is missing or failed to load.
+nouveau listed but no nvidia: The open-source driver has the GPU. Follow step 2 from my last message to blacklist it.
+nvidia listed but nvidia-smi still fails: The module loaded but is mismatched with the userspace utilities, which usually means a driver version mismatch after an update. Reboot first, and if that doesn’t fix it, reinstall the driver.
+dmesg shows “Loading of NVIDIA module failed,” “Signature verification failed,” or “Key was rejected by service”: Secure Boot is blocking the module. Either disable Secure Boot in BIOS or enroll the signing key.
+dmesg shows “NVRM: API mismatch” or “version mismatch”: The kernel module and userspace driver versions differ. Reinstall the driver so both match.
+dmesg shows nothing relevant: Run sudo dmesg | grep -iE "nvrm|nvidia|nouveau|drm" | tail -40 (dmesg may need sudo on some systems), which catches more of the relevant lines.
+
+Include your distro (cat /etc/os-release) and whether you recently updated the kernel or NVIDIA driver, since that narrows it down quickly.
+
+以下是上一条的中文说明。
+
+除了关闭 Secure Boot，还有三种方法：
+
+1. 使用 Ubuntu 预先签名的 NVIDIA 驱动（通常最推荐）
+
+Ubuntu 官方提供了已经由 Canonical 签名的 NVIDIA 内核模块。这种模块在 Secure Boot 开启时也能加载，不需要注册密钥。先查一下有没有适合你内核的版本：
+
+bash
+apt search linux-modules-nvidia | grep 595
+
+如果有结果，就安装搜索结果里显示的包名，例如：
+
+bash
+sudo apt install linux-modules-nvidia-595-generic
+sudo reboot
+
+重启后运行 nvidia-smi。如果包名对不上，运行 ubuntu-drivers list 可以查看你的系统可用的驱动。
+
+2. 自己签名模块并注册密钥
+
+这就是我前面说的 MOK 方法。你的 /var/lib/dkms/mok.pub 已经存在，只差用 mokutil --import 注册它。
+
+3. 使用 nouveau 驱动
+
+开启 Secure Boot 也能用，但 nouveau 不支持 CUDA，在 RTX 4050 上性能也很差。只有在你不需要 NVIDIA 功能时才考虑。
+
+建议顺序： 先试方法一。如果搜索结果里没有适合你内核的签名包，就用方法二。把 apt search 的输出发给我，我告诉你下一步的具体命令。
+
+how to know sudo apt install linux-modules-nvidia-595-generic
+
+You can check before installing by confirming that Ubuntu has a signed package built for your exact kernel.
+
+1. Find your kernel version
+
+bash
+uname -r
+
+Yours is 7.0.0-38-generic.
+
+2. Check that the package exists
+
+bash
+apt-cache policy linux-modules-nvidia-595-generic
+
+Look at the Candidate: line:
+
+If it shows a version number, the package is available and you can install it.
+If it shows (none), Ubuntu has no signed build for driver 595 in your repositories. Use the key-enrollment method instead.
+
+3. Confirm it matches your kernel
+
+bash
+apt-cache policy linux-modules-nvidia-595-$(uname -r)
+
+This checks for the kernel-specific package, which should be named linux-modules-nvidia-595-7.0.0-38-generic. A signed module only loads on the kernel it was built for, so this package needs to exist. If it shows (none), a plain install won’t help with your current kernel.
+
+4. Install and verify
+
+bash
+sudo apt install linux-modules-nvidia-595-generic
+sudo reboot
+
+After rebooting, run nvidia-smi.
+
+Cleanup: Once the signed module works, the old DKMS builds may conflict with it. You can remove them with:
+
+bash
+sudo dkms remove nvidia/595.112.07 --all
+
+Only do this after nvidia-smi works.
+
+If Candidate: shows (none) or the kernel-specific package is missing, paste the output of step 2 and step 3 and I’ll help you choose the next step.
