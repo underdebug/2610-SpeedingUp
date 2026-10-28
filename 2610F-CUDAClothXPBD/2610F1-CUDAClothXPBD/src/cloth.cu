@@ -58,9 +58,6 @@ void Cloth::init_params(int& num_x, int& num_y) {
     drag_depth = 0.0f;
     drag_inv_mass = 0.0f;
 
-    if (num_x % 2 == 1) num_x++;
-    if (num_y % 2 == 1) num_y++;
-
     num_particles = (num_x + 1) * (num_y + 1);
 }
 
@@ -134,9 +131,9 @@ void Cloth::alloc_device_buffers() {
 
 void Cloth::build_constraints(int num_x, int num_y) {
     pass_sizes = {
+        (num_x + 1) * ((num_y + 1) / 2),
         (num_x + 1) * int(floor(num_y / 2)),
-        (num_x + 1) * int(floor(num_y / 2)),
-        int(floor(num_x / 2)) * (num_y + 1),
+        ((num_x + 1) / 2) * (num_y + 1),
         int(floor(num_x / 2)) * (num_y + 1),
         2 * num_x * num_y + (num_x + 1) * (num_y - 1) + (num_y + 1) * (num_x - 1)
     };
@@ -154,16 +151,17 @@ void Cloth::build_constraints(int num_x, int num_y) {
 
     for (int pass_nr = 0; pass_nr < 2; ++pass_nr) {
         for (int xi = 0; xi <= num_x; ++xi) {
-            for (int yi = 0; yi < num_y / 2; ++yi) {
+            for (int yi = 0; yi < (num_y + 1 - pass_nr) / 2; ++yi) {
                 dist_const_ids[2 * i] = xi * (num_y + 1) + 2 * yi + pass_nr;
                 dist_const_ids[2 * i + 1] = xi * (num_y + 1) + 2 * yi + pass_nr + 1;
                 ++i;
             }
         }
     }
+    // 0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  19  1   2   5   6   9  10  13  14  17  18
 
     for (int pass_nr = 0; pass_nr < 2; ++pass_nr) {
-        for (int xi = 0; xi < num_x / 2; ++xi) {
+        for (int xi = 0; xi < (num_x + 1 - pass_nr) / 2; ++xi) {
             for (int yi = 0; yi <= num_y; ++yi) {
                 dist_const_ids[2 * i] = (2 * xi + pass_nr) * (num_y + 1) + yi;
                 dist_const_ids[2 * i + 1] = (2 * xi + pass_nr + 1) * (num_y + 1) + yi;
@@ -171,6 +169,8 @@ void Cloth::build_constraints(int num_x, int num_y) {
             }
         }
     }
+
+    // 0   4   1   5   2   6   3   7   8  12   9  13  10  14  11  15   4   8   5   9   6  10   7  11  12  16  13  17  14  18  15  19 
 
     for (int xi = 0; xi < num_x; ++xi) {
         for (int yi = 0; yi < num_y; ++yi) {
@@ -213,6 +213,8 @@ void Cloth::build_constraints(int num_x, int num_y) {
         d_pos_x, d_pos_y, d_pos_z, d_dist_const_ids, d_const_rest_lengths, num_dist_constraints
         );
     CUDA_CHECK(cudaDeviceSynchronize());
+
+    // -exec source cloth.cu.py build_constraints
 }
 
 void Cloth::build_triangles(int num_x, int num_y) {

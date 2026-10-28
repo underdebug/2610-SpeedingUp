@@ -12,6 +12,147 @@ import matplotlib.pyplot as plt
 
 from mem import mem
 
+def build_constraints(Agg="Agg"):
+    """Export one PNG per pass from the selected build_constraints frame.
+
+    Pause after dist_const_ids is filled, before build_constraints returns.
+    The filename suffix is the zero-based pass index.
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    if Agg not in ("Agg", "QtAgg"):
+        Agg = "Agg"
+    plt.switch_backend(Agg)
+
+    def read(name, **kwargs):
+        value = mem(name, **kwargs)
+        if value is None:
+            raise RuntimeError(
+                f"Cannot read {name}; pause after the constraint loops "
+                "inside Cloth::build_constraints."
+            )
+        return value
+
+    num_particles = int(read("num_particles"))
+    num_constraints = int(read("num_dist_constraints"))
+    positions = np.column_stack([
+        read("h_pos_x", Size=num_particles),
+        read("h_pos_z", Size=num_particles),
+    ])
+    raw_ids = read("d_dist_const_ids", Size=2 * num_constraints)
+    print("Reading constraint indices from d_dist_const_ids")
+    dist_const_ids = np.asarray(
+        raw_ids, dtype=int
+    ).reshape(-1)
+    indices = dist_const_ids.reshape(-1, 2)
+    sizes = np.asarray(read("pass_sizes"), dtype=int).reshape(-1)
+    if len(indices) != num_constraints or sizes.sum() != num_constraints:
+        raise ValueError("Constraint count does not match dist_const_ids/pass_sizes")
+    if np.any(indices < 0) or np.any(indices >= num_particles):
+        raise ValueError("Constraint endpoint index is outside the particle array")
+    independent = np.asarray(read("pass_independent"), dtype=bool).reshape(-1)
+    if len(sizes) != 5 or len(independent) != len(sizes) or np.any(sizes < 0):
+        raise ValueError("Expected five passes with matching independence flags")
+    pass_ends = np.cumsum(sizes)
+
+    project_root = Path(os.environ.get("PROJECT_ROOT") or
+                        Path(__file__).resolve().parent.parent).resolve()
+    if project_root.name == "src":
+        project_root = project_root.parent
+    output_dir = project_root / "mem" / "figure"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    pass_names = ["Structural Z, parity 0", "Structural Z, parity 1",
+                  "Structural X, parity 0", "Structural X, parity 1",
+                  "Shear + bending"]
+    focus_id = 9 if num_particles > 9 else None
+    # Filtering preserves the device-buffer sequence and global constraint IDs.
+    def direction(cid):
+        a, b = indices[cid]
+        dx, dz = positions[b] - positions[a]
+        if np.isclose(dx, 0):
+            return "vertical"
+        if np.isclose(dz, 0):
+            return "horizontal"
+        return "diagonal"
+
+    direction_titles = {"diagonal": "Diagonal 45° + 135°",
+                        "vertical": "Vertical", "horizontal": "Horizontal"}
+    jobs = [(pass_nr, False, None) for pass_nr in range(4)]
+    jobs.extend((4, False, kind) for kind in ("diagonal", "vertical", "horizontal"))
+    if focus_id is not None:
+        jobs.append((4, True, None))
+    for pass_nr, focused, kind in jobs:
+        start = int(pass_ends[pass_nr - 1]) if pass_nr else 0
+        end = int(pass_ends[pass_nr])
+        constraint_ids = [cid for cid in range(start, end)
+                          if (not focused or focus_id in indices[cid])
+                          and (kind is None or direction(cid) == kind)]
+        fig, ax = plt.subplots(figsize=(12, 8))
+        ax.scatter(*positions.T, color="0.25", s=25, zorder=3)
+        for particle, point in enumerate(positions):
+            ax.annotate(f"P{particle}", point, xytext=(5, 6),
+                        textcoords="offset points", fontsize=9, zorder=5)
+        # Give every constraint in this pass its own color and global ID.
+        count = len(constraint_ids)
+        colors = plt.get_cmap("turbo")(np.linspace(0.03, 0.97, max(end - start, 1)))
+        for constraint_id in constraint_ids:
+            local_id = constraint_id - start
+            a, b = indices[constraint_id]
+            color = colors[local_id]
+            ax.plot(*positions[[a, b]].T, color=color, linewidth=2,
+                    label=f"C{constraint_id} [{2 * constraint_id}, {2 * constraint_id + 1}] "
+                          f"[{a}, {b}]", zorder=2)
+            # One label per constraint, at 1/3 with a perpendicular offset.
+            delta = positions[b] - positions[a]
+            length = float(np.linalg.norm(delta))
+            normal = np.array([-delta[1], delta[0]]) / length if length else np.array([0., 1.])
+            label_position = positions[a] + delta / 3
+            ax.annotate(f"C{constraint_id} [{2 * constraint_id}, {2 * constraint_id + 1}] "
+                        f"[{a}, {b}]",
+                        label_position, xytext=tuple(7 * normal),
+                        textcoords="offset points", ha="center", va="center",
+                        fontsize=7, color=color,
+                        bbox=dict(facecolor="white", alpha=0.85,
+                                  edgecolor="none", pad=0.5), zorder=5)
+        focus_title = f" — point P{focus_id}" if focused else ""
+        pass4_names = {"diagonal": "4_1 Diag", "vertical": "4_2 Vertical",
+                       "horizontal": "4_3 Hor"}
+        plot_title = ("Pass 4_4 P9" if focused else
+                      f"Pass {pass4_names[kind]}" if pass_nr == 4 else
+                      f"Pass {pass_nr}: {pass_names[pass_nr]}")
+        if focused:
+            ax.scatter(*positions[focus_id], color="crimson", marker="*",
+                       s=220, zorder=6, label=f"Selected P{focus_id}")
+        ax.set(xlabel="X", ylabel="Z",
+               title=f"{plot_title}\n"
+                     f"{count} constraints, independent={bool(independent[pass_nr])}\n"
+                     "In d_dist_const_ids order (original C IDs and array indices)")
+        ax.set_aspect("equal")
+        ax.margins(0.18)
+        if count:
+            ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1),
+                      fontsize=7, ncol=max(1, (count + 23) // 24))
+        fig.tight_layout()
+        image_name = ("4_4_P9" if focused else
+                      pass4_names[kind].replace(" ", "_") if pass_nr == 4 else
+                      str(pass_nr))
+        fig.savefig(output_dir / f"build_constraints_{image_name}.png", dpi=180)
+        if Agg == "QtAgg":
+            plt.show(block=True)
+        plt.close(fig)
+
+    print(f"Saved {len(jobs)} constraint images to {output_dir}")
+    if Agg == "Agg":
+        # Match the other plotting helpers: show the saved result in a viewer.
+        preview = output_dir / "build_constraints_4_1_Diag.png"
+        try:
+            subprocess.Popen(["xdg-open", str(preview)])
+        except OSError as error:
+            print(f"Images saved, but could not open the viewer: {error}")
+    return output_dir
+
 def build_triangles(Agg="Agg"):
     if Agg not in ("Agg", "QtAgg"): Agg = "Agg"
     matplotlib.use(Agg)
