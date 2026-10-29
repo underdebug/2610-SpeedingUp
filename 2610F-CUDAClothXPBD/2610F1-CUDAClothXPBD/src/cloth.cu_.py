@@ -6,8 +6,6 @@ import os
 import subprocess
 from pathlib import Path
 
-# from mem import mem
-
 # Qt otherwise warns when choosing X11 in a GNOME Wayland session.
 # Preserve any display backend explicitly selected by the user.
 if os.environ.get("XDG_SESSION_TYPE") == "wayland":

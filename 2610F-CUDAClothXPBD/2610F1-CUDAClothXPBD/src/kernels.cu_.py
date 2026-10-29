@@ -12,8 +12,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from mem import mem
-
 def integrate(Agg="Agg"):
     """Plot the selected particle after the kernel's sphere projection."""
     import numpy as np
