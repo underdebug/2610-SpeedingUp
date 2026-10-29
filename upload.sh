@@ -72,4 +72,3 @@ fi
 git push "$URL" "$BRANCH"
 
 echo "Upload complete."
-echo "Local build and __pycache__ directories preserved."
