@@ -718,7 +718,21 @@ def kernel_memory(para, Type, Size, Step):
                         
                         data[ii, jj] = data[i, j];
         return data
-    elif Size == None:
+    elif Size is not None and len(Size) == 1:
+        count = int(Size[0])
+        if count != Size[0] or count < 0:
+            raise ValueError('Size must be a nonnegative integer')
+        if int(Step) != Step or Step < 1:
+            raise ValueError('Step must be a positive integer')
+        Step = int(Step)
+        dtype = np.dtype(TYPE_MAP[Type])
+        data = np.empty(count, dtype=dtype)
+        for i in range(0, count, Step):
+            value = (para + i).dereference()
+            value = float(value) if dtype.kind == 'f' else int(value)
+            data[i:min(i + Step, count)] = value
+        return data
+    elif Size is None:
         # Probe a bounded readable prefix using the original CUDA pointer.
         # Readability does not identify an allocation's exact boundary.
         limit = 1024
@@ -902,6 +916,12 @@ def is_device_pointer(Name):
         return 2
 
 def mem_(Name, Type=None, Size=None, Step=1):
+    if isinstance(Type, str) and Type == '':
+        Type = None
+    if isinstance(Size, str):
+        if Size == '': Size = None
+        else: Size = mem(Size)
+
     expression = Name.strip().rstrip(';').rstrip()
     if '(' in expression:
         return int(gdb.parse_and_eval(expression))

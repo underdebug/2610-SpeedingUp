@@ -88,7 +88,7 @@ __global__ void solve_distance_constraints(
 
     // -exec python const_ids = mem('const_ids', '', 'num_constraints'); printf(const_ids)
     // -exec python printf(mem('const_ids', '', 'num_constraints'))
-    // -exec python printf(mem('const_ids', '', 100))
+    // -exec python printf(mem('inv_mass', '', 'num_constraints'))
     int cNr = first_constraint + blockIdx.x * blockDim.x + threadIdx.x;
     if (cNr >= first_constraint + num_constraints) return;
 
