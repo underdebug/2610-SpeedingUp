@@ -211,7 +211,7 @@ void Cloth::build_constraints(int num_x, int num_y) {
         );
     CUDA_CHECK(cudaDeviceSynchronize());
 
-    // -exec source cloth.cu.py build_constraints
+    // -exec source cloth.cu_.py build_constraints
 }
 
 void Cloth::build_triangles(int num_x, int num_y) {
@@ -251,12 +251,12 @@ void Cloth::build_triangles(int num_x, int num_y) {
     CUDA_CHECK(cudaMalloc(&d_tri_dist, num_tris * sizeof(float)));
     CUDA_CHECK(cudaMemcpy(d_tri_dist, h_tri_dist, num_tris * sizeof(float), cudaMemcpyHostToDevice));
 
-    // -exec source cloth.cu.py build_triangles Agg NODELETE
-    // -exec source cloth.cu.py build_triangles QtAgg
+    // -exec source cloth.cu_.py build_triangles Agg NODELETE
+    // -exec source cloth.cu_.py build_triangles QtAgg
 }
 
 void Cloth::simulate_step() {
-    // -exec source cloth.cu.py simulate_step
+    // -exec source cloth.cu_.py simulate_step
     // -exec break if times == 30
     static int times = 0; times++;    
 
@@ -370,7 +370,7 @@ void Cloth::raycast_triangle_launch(const Vec3<float>& orig, const Vec3<float>& 
 
 
 void Cloth::start_drag(const Vec3<float>& orig, const Vec3<float>& dir) {
-
+ 
     // Launch the raycast_triangle kernel
     raycast_triangle_launch(orig, dir);
 

@@ -64,7 +64,7 @@ __global__ void integrate(
         pos_y[p_nr] = sphere_center.y + r_y * ((sphere_radius + thickness) / d);
         pos_z[p_nr] = sphere_center.z + r_z * ((sphere_radius + thickness) / d);
 
-        // -exec source cloth.cu.py integrate
+        // -exec source kernels_.cu.py integrate
     }
 
     float p_x = pos_x[p_nr];
@@ -138,7 +138,7 @@ __global__ void solve_distance_constraints(
         atomicAdd(&pos_z[id1], -dP_z * w1);
     }
     // -exec break if idx.x == 7
-    // -exec source cloth.cu.py solve_distance_constraints Agg
+    // -exec source kernels.cu_.py solve_distance_constraints Agg
 }
 
 

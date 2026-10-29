@@ -22,14 +22,6 @@ fi
 # Select branch
 git symbolic-ref HEAD "refs/heads/$BRANCH"
 
-# Retrieve remote changes
-if git fetch "$URL" "$BRANCH"; then
-    git merge FETCH_HEAD --no-edit --allow-unrelated-histories
-else
-    echo "Fetch failed. Upload canceled."
-    exit 1
-fi
-
 # Ignore build and Python cache directories
 touch .gitignore
 for pattern in 'build/' '__pycache__/'; do
@@ -38,23 +30,45 @@ done
 
 # Remove previously tracked build/cache files from Git index only
 # Keep all local files and directories
-while IFS= read -r -d '' file; do
-    case "/$file/" in
-        */build/*|*/__pycache__/*)
-            git rm --cached -q -- "$file"
-            ;;
-    esac
-done < <(git ls-files -z)
+remove_ignored_from_index() {
+    while IFS= read -r -d '' file; do
+        case "/$file/" in
+            */build/*|*/__pycache__/*)
+                git rm --cached -q -- "$file"
+                ;;
+        esac
+    done < <(git ls-files -z)
+}
 
-# Stage changes
+remove_ignored_from_index
+
+# Stage and commit local changes BEFORE merging
 git add -A
 
 if ! git diff --cached --quiet; then
     git commit -m "$MSG"
 else
-    echo "no changes"
+    echo "no local changes"
 fi
 
+# Retrieve remote changes
+if git fetch "$URL" "$BRANCH"; then
+    git merge FETCH_HEAD -X ours --no-edit --allow-unrelated-histories
+else
+    echo "Fetch failed. Upload canceled."
+    exit 1
+fi
+
+# Remove tracked build/cache files introduced by remote merge
+remove_ignored_from_index
+
+git add -A
+
+if ! git diff --cached --quiet; then
+    git commit -m "$MSG cleanup"
+fi
+
+# Upload merged changes
 git push "$URL" "$BRANCH"
 
 echo "Upload complete."

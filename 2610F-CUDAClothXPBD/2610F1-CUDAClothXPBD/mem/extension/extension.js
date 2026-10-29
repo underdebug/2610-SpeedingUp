@@ -20,8 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// 10/26 2026
-LOG = 0; 
+LOG = 0; // 10/29 2026
 
 const vscode = require('vscode');
 const { registerShaderDefinitions } = require('./definitions');
@@ -224,6 +223,54 @@ async function requestExpr(expr) {
     }
 }
 
+async function runExec_source(session, sourceText) {
+    const sourceArgs = sourceText.trim().match(/^(?:"([^"]+)"|'([^']+)'|(\S+))(?:\s+([A-Za-z_]\w*)(?:\s+(.+))?)?$/);
+    if (!sourceArgs) {
+        vscode.window.showErrorMessage('mem: Use source <file> [function_name [arguments...]]. Quote paths containing spaces.');
+        return true;
+    }
+    const filename = sourceArgs[1] || sourceArgs[2] || sourceArgs[3];
+    const functionName = sourceArgs[4];
+    const functionArgs = sourceArgs[5] ? sourceArgs[5].trim().split(/\s+/) : [];
+    if (functionName && !/\.py$/i.test(filename)) {
+        vscode.window.showErrorMessage('mem: Function calls require a Python (.py) script.');
+        return true;
+    }
+    const editor = vscode.window.activeTextEditor;
+    const currentPath = editor ? path.dirname(editor.document.uri.fsPath) : undefined;
+    const folder = editor && vscode.workspace.getWorkspaceFolder(editor.document.uri);
+    const projectPath = (session.workspaceFolder || folder)?.uri.fsPath
+        || process.env.PROJECT_ROOT || currentPath;
+    const relativePath = filename.replace(/^[/\\]+/, '');
+    const candidates = [
+        currentPath && path.resolve(currentPath, filename),
+        path.isAbsolute(filename) && filename,
+        projectPath && path.join(projectPath, relativePath),
+        projectPath && path.join(projectPath, 'src', relativePath)
+    ].filter(Boolean);
+    const sourcePath = candidates.find(candidate =>
+        fs.existsSync(candidate) && fs.statSync(candidate).isFile());
+    if (!sourcePath) {
+        vscode.window.showErrorMessage(`mem: Script not found: ${filename}`);
+        return true;
+    }
+    const normalizedPath = sourcePath.replace(/\\/g, '/');
+    const expr = functionName
+        ? `-exec python __file__ = ${JSON.stringify(normalizedPath)}; exec(compile(open(__file__, 'rb').read(), __file__, 'exec'), globals()); ${functionName}(*${JSON.stringify(functionArgs)})`
+        : `-exec source ${normalizedPath}`;
+    const frameId = await getFrameId(session);
+    LOG && log(expr);
+    const response = await session.customRequest('evaluate', {
+        expression: expr,
+        context: 'repl',
+        frameId: frameId
+    });
+    if (response && response.result) {
+        vscode.debug.activeDebugConsole.appendLine(response.result);
+    }
+    return true;
+}
+
 async function runExec(text) {
     const session = vscode.debug.activeDebugSession;
     if (!session) {
@@ -242,50 +289,7 @@ async function runExec(text) {
     let command = match[1];
     const source = command.match(/^source\s+(.+)$/);
     if (source) {
-        const sourceArgs = source[1].trim().match(/^(?:"([^"]+)"|'([^']+)'|(\S+))(?:\s+([A-Za-z_]\w*)(?:\s+(.+))?)?$/);
-        if (!sourceArgs) {
-            vscode.window.showErrorMessage('mem: Use source <file> [function_name [arguments...]]. Quote paths containing spaces.');
-            return true;
-        }
-        const filename = sourceArgs[1] || sourceArgs[2] || sourceArgs[3];
-        const functionName = sourceArgs[4];
-        const functionArgs = sourceArgs[5] ? sourceArgs[5].trim().split(/\s+/) : [];
-        if (functionName && !/\.py$/i.test(filename)) {
-            vscode.window.showErrorMessage('mem: Function calls require a Python (.py) script.');
-            return true;
-        }
-        const editor = vscode.window.activeTextEditor;
-        const currentPath = editor ? path.dirname(editor.document.uri.fsPath) : undefined;
-        const folder = editor && vscode.workspace.getWorkspaceFolder(editor.document.uri);
-        const projectPath = (session.workspaceFolder || folder)?.uri.fsPath
-            || process.env.PROJECT_ROOT || currentPath;
-        const relativePath = filename.replace(/^[/\\]+/, '');
-        const candidates = [
-            currentPath && path.resolve(currentPath, filename),
-            path.isAbsolute(filename) && filename,
-            projectPath && path.join(projectPath, relativePath),
-            projectPath && path.join(projectPath, 'src', relativePath)
-        ].filter(Boolean);
-        const sourcePath = candidates.find(candidate =>
-            fs.existsSync(candidate) && fs.statSync(candidate).isFile());
-        if (!sourcePath) {
-            vscode.window.showErrorMessage(`mem: Script not found: ${filename}`);
-            return true;
-        }
-        const normalizedPath = sourcePath.replace(/\\/g, '/');
-        const expr = functionName
-            ? `-exec python __import__('runpy').run_path(${JSON.stringify(normalizedPath)})[${JSON.stringify(functionName)}](*${JSON.stringify(functionArgs)})`
-            : `-exec source ${normalizedPath}`;
-        const frameId = await getFrameId(session);
-        LOG && log(expr);
-        const response = await session.customRequest('evaluate', {
-            expression: expr,
-            context: 'repl',
-            frameId: frameId
-        });
-        if (response && response.result) {
-            vscode.debug.activeDebugConsole.appendLine(response.result);
-        }
+        return await runExec_source(session, source[1]);
     }
     else if (command.match(/^break\b/)) {
         const editor = vscode.window.activeTextEditor;
@@ -672,7 +676,7 @@ async function buildShader(editor, source) {
         if (!await vscode.workspace.saveAll()) return false;
         const filename = editor.document.uri.fsPath;
         source = source || (/\.(cpp|cc|cxx|c|h|hpp|hxx)$/i.test(filename)
-            ? filename : `${filename}.cc`);
+            ? filename : `${filename}_.cc`);
         const workspace = vscode.workspace.getWorkspaceFolder(editor.document.uri);
         const root = workspace ? workspace.uri.fsPath : path.dirname(source);
         let builder = path.join(__dirname, 'shader.py');
@@ -717,7 +721,7 @@ async function buildKernel(editor, source) {
         if (!await vscode.workspace.saveAll()) return false;
         const filename = editor.document.uri.fsPath;
         source = source || (/\.(cpp|cc|cxx|c|h|hpp|hxx)$/i.test(filename)
-            ? filename : `${filename}.cc`);
+            ? filename : `${filename}_.cc`);
         source = path.resolve(source);
         const workspace = vscode.workspace.getWorkspaceFolder(editor.document.uri);
         const root = workspace ? workspace.uri.fsPath : path.dirname(source);
@@ -798,7 +802,7 @@ async function buildKernelMain(editor, source) {
         if (!await vscode.workspace.saveAll()) return false;
         const filename = editor.document.uri.fsPath;
         source = source || (/\.(cpp|cc|cxx|c|h|hpp|hxx)$/i.test(filename)
-            ? filename : `${filename}.cc`);
+            ? filename : `${filename}_.cc`);
         const workspace = vscode.workspace.getWorkspaceFolder(editor.document.uri);
         const root = workspace ? workspace.uri.fsPath : path.dirname(source);
         const localHeaders = path.join(root, 'mem', 'extension');
@@ -1117,8 +1121,8 @@ async function cmdDebug() {
     let sourcefile = "";
     let testfile = "";
 
-    const filename_sub = filename.replace(/\.[^./\\]+$/, '');
-    const filename_add =  `${filename}.cc`;
+    const filename_sub = filename.replace(/_?\.[^./\\]+$/, '');
+    const filename_add =  `${filename}_.cc`;
 
     if (fs.existsSync(filename_sub)){
         sourcefile = filename_sub;
@@ -1192,7 +1196,7 @@ async function createPythonScript() {
         return filename;
     }
     
-    const source = `${filename}.py`;
+    const source = `${filename}_.py`;
     const wrapper = "printf('hello mingjie!')\n";
     try {
         await fs.promises.writeFile(source, wrapper, { encoding: 'utf8', flag: 'wx' });
@@ -1225,8 +1229,8 @@ async function scriptDebug(filename) {
     }
 
     // Run inside GDB, where the gdb Python module and debug symbols exist.
-    // GDB's source command treats quotes as literal filename characters.
-    const scriptCommand = `python import runpy; runpy.run_path(${JSON.stringify(scriptPath)}, run_name='__main__')`;
+    // Share GDB's Python globals, including the imported mem helpers.
+    const scriptCommand = `python __file__ = ${JSON.stringify(scriptPath)}; exec(compile(open(__file__, 'rb').read(), __file__, 'exec'), globals())`;
     const setupCommands = (configuration.setupCommands || []).filter(command => {
         const match = /^\s*source\s+(.+?)\s*$/.exec(command.text || '');
         const sourcePath = match && match[1].replace(/^"(.*)"$/, '$1')
@@ -1272,8 +1276,8 @@ async function cmdScript() {
     let sourcefile = "";
     let testfile = "";
 
-    const filename_sub = filename.replace(/\.[^./\\]+$/, '');
-    const filename_add =  `${filename}.py`;
+    const filename_sub = filename.replace(/_?\.[^./\\]+$/, '');
+    const filename_add =  `${filename}_.py`;
 
     if (fs.existsSync(filename_sub)){
         sourcefile = filename_sub;
