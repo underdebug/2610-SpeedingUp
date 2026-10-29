@@ -20,8 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# 10/26 2026
-LOG = 0
+LOG = 1 # 10/26 2026
 
 import gdb
 import subprocess
@@ -661,30 +660,7 @@ def gpu(Name, Type=None, Size=None):
 def kernel_memory(para, Type, Size, Step):
     if LOG: PRINT('para', para, 'Type', Type, 'Size', Size, 'Step', Step)
 
-    if Step > 1 and len(Size) > 1:
-        if LOG: PRINT('Step operation')
-
-        type_t = TYPE_MAP[Type]
-        data = np.empty(Size, dtype=type_t)
-
-        for i in range(0, Size[0], Step):
-            for j in range(0, Size[1], Step):
-                data[i, j] = (para + i * Size[1] + j).dereference()
-
-                for di in range(Step): 
-                    ii = i + di
-                    if ii >= shape[0]:
-                        continue
-
-                    for dj in range(Step):
-                        jj = j + dj
-                        if jj >= Size[1]:
-                            continue
-                        
-                        data[ii, jj] = data[i, j];
-        return data
-
-    else:
+    if Size is not None and Step == 1 and len(Size) > 1:
         if LOG: PRINT('No step operation')
 
         type_t = TYPE_MAP[Type]
@@ -718,6 +694,53 @@ def kernel_memory(para, Type, Size, Step):
             total_data[i] = (para + total_offset).cast(total_type.pointer()).dereference()
 
         data = total_data.view(type_t)
+        return data
+
+    elif Size is not None and Step > 1 and len(Size) > 1:
+        if LOG: PRINT('Step operation')
+
+        type_t = TYPE_MAP[Type]
+        data = np.empty(Size, dtype=type_t)
+
+        for i in range(0, Size[0], Step):
+            for j in range(0, Size[1], Step):
+                data[i, j] = (para + i * Size[1] + j).dereference()
+
+                for di in range(Step): 
+                    ii = i + di
+                    if ii >= shape[0]:
+                        continue
+
+                    for dj in range(Step):
+                        jj = j + dj
+                        if jj >= Size[1]:
+                            continue
+                        
+                        data[ii, jj] = data[i, j];
+        return data
+    elif Size == None:
+        # Probe a bounded readable prefix using the original CUDA pointer.
+        # Readability does not identify an allocation's exact boundary.
+        limit = 1024
+        values = []
+        if int(Step) != Step or Step < 1:
+            raise ValueError('Step must be a positive integer')
+        Step = int(Step)
+        dtype = np.dtype(TYPE_MAP[Type])
+        for Size_t in range(limit):
+            try:
+                value = (para + Size_t).dereference()
+                # Force lazy GDB values to be read inside the try block.
+                value = float(value) if dtype.kind == 'f' else int(value)
+            except gdb.error:
+                if not values:
+                    raise
+                break
+            values.append(value)
+        Size_t = len(values)
+        data = np.asarray(values, dtype=dtype)
+        if Step > 1:
+            data = data[(np.arange(Size_t) // Step) * Step]
         return data
 
 def kernel_array(para, Type=None, Size=None):
@@ -958,6 +981,9 @@ def mem(Name, Type=None, Size=None, Step=1):
     try:
         frame = gdb.selected_frame()
         sym, _ = gdb.lookup_symbol(Name, frame.block())
+        if sym == None:
+            if LOG: PRINT('sym', sym)
+            aware(1)
     except (gdb.error, RuntimeError) as error:
         PRINT(f'{type(error).__name__}: {error}')
         aware(1)
@@ -970,7 +996,7 @@ def mem(Name, Type=None, Size=None, Step=1):
             data = mem_(Name, Type, Size, Step)
             # np.save(f'{PATH}/data/{Name}.npy', data) 
         except Exception as error:
-            print(f"mem: cannot read {Name!r}: {error}", file=sys.stderr)
+            PRINT(f"mem: cannot read {Name!r}: {error}", file=sys.stderr)
             data = None
             
     return data

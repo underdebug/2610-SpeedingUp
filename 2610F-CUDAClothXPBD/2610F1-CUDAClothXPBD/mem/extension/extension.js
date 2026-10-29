@@ -1291,6 +1291,30 @@ async function cmdScript() {
     await scriptDebug(testfile);
 }
 
+function expandKernelCondition(editor, condition) {
+    // Expand global thread coordinates only inside a CUDA kernel body.
+    const source = editor.document.getText().slice(0,
+        editor.document.offsetAt(editor.selection.active));
+    const clean = source.replace(
+        /\/\*[\s\S]*?\*\/|\/\/[^\r\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g,
+        value => value.replace(/[^\r\n]/g, ' ')
+    );
+    const inKernel = [...clean.matchAll(/\b__global__\b[^;{}]*\{/g)].some(kernel => {
+        let depth = 1;
+        for (let i = kernel.index + kernel[0].length; i < clean.length; i++) {
+            if (clean[i] === '{') depth++;
+            if (clean[i] === '}' && --depth === 0) return false;
+        }
+        return true;
+    });
+    if (inKernel) {
+        condition = condition.replace(/\bidx\s*\.\s*([xyz])\b/g,
+            (_, axis) => `(blockIdx.${axis} * blockDim.${axis} + threadIdx.${axis})`)
+            .replace(/(?<![=!<>])=(?!=)/g, '==');
+    }
+    return condition;
+}
+
 async function toggleBreakpoint(){
     const editor = vscode.window.activeTextEditor;
     if (!editor) return;
@@ -1319,6 +1343,8 @@ async function toggleBreakpoint(){
             }
             if (pass === 0) condition = condition.replace(/^if\s+/, '').trim();
         }
+
+        condition = expandKernelCondition(editor, condition);
 
         const line = editor.selection.active.line;
         const uri = editor.document.uri;

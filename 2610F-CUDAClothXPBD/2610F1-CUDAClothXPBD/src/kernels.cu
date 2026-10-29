@@ -30,6 +30,7 @@ __global__ void integrate(
     float* vel_x, float* vel_y, float* vel_z, 
     Vec3<float> sphere_center, float sphere_radius, int num_particles) {
 
+    // -exec break if idx.x == 7
     int p_nr = blockIdx.x * blockDim.x + threadIdx.x;
     if (p_nr >= num_particles) return;
 
@@ -62,6 +63,8 @@ __global__ void integrate(
         pos_x[p_nr] = sphere_center.x + r_x * ((sphere_radius + thickness) / d);
         pos_y[p_nr] = sphere_center.y + r_y * ((sphere_radius + thickness) / d);
         pos_z[p_nr] = sphere_center.z + r_z * ((sphere_radius + thickness) / d);
+
+        // -exec source cloth.cu.py integrate
     }
 
     float p_x = pos_x[p_nr];
@@ -83,6 +86,9 @@ __global__ void solve_distance_constraints(
     float* pos_x, float* pos_y, float* pos_z,
     Vec3<float>* corr, int* const_ids, float* rest_lengths, int num_constraints) {
 
+    // -exec python const_ids = mem('const_ids', '', 'num_constraints'); printf(const_ids)
+    // -exec python printf(mem('const_ids', '', 'num_constraints'))
+    // -exec python printf(mem('const_ids', '', 100))
     int cNr = first_constraint + blockIdx.x * blockDim.x + threadIdx.x;
     if (cNr >= first_constraint + num_constraints) return;
 
@@ -113,6 +119,7 @@ __global__ void solve_distance_constraints(
     float dP_z = n_z * (l - l0) / w;
 
     if (solve_type == 1) {
+        // -exec break if fabs(dP_x) > 0.001 || fabs(dP_y) > 0.001 || fabs(dP_z) > 0.001
         atomicAdd(&(corr[id0].x), dP_x * w0);
         atomicAdd(&(corr[id0].y), dP_y * w0);
         atomicAdd(&(corr[id0].z), dP_z * w0);
@@ -130,6 +137,8 @@ __global__ void solve_distance_constraints(
         atomicAdd(&pos_y[id1], -dP_y * w1);
         atomicAdd(&pos_z[id1], -dP_z * w1);
     }
+    // -exec break if idx.x == 7
+    // -exec source cloth.cu.py solve_distance_constraints Agg
 }
 
 
