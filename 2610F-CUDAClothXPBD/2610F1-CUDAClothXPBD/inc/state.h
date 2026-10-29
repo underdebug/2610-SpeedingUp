@@ -58,26 +58,18 @@ private:
 
     // Cloth
     Cloth* cloth;
-    // OLDCODE
 
     // 原网格参数：保留供对照，原粒子数为 (200 + 1)² = 40401。
-    // int cloth_num_x = 200;
-    // int cloth_num_y = 200;
-
-    // NEWCODE
+    int cloth_num_x = 50;
+    int cloth_num_y = 50;
+    float cloth_y = 2.0;
+    float cloth_spacing = 2.0f / cloth_num_x;
 
     // 1% 测试网格：使用偶数分段，粒子数为 (20 + 1)² = 441，约为最初的 1.09%。
-    int cloth_num_x = 4;
-    int cloth_num_y = 3;
-    float cloth_y = 2.0;
-    // OLDCODE
-
-    // float cloth_spacing = 0.01;
-
-    // NEWCODE
-
-    // 配合 20 个分段调整间距，保持布料边长为 2。
-    float cloth_spacing = 2.0f / 20.0f;
+    // int cloth_num_x = 4;
+    // int cloth_num_y = 3;
+    // float cloth_y = 2.0;
+    // float cloth_spacing = 2.0f / 20.0f;
 
     // Cloth
     Camera camera;
