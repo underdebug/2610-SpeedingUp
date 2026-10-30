@@ -1,10 +1,19 @@
 #include "Mesh.cuh"
 
-Mesh::Mesh(const std::string& path, const Transformation& transformation, const Material* material, MemoryPool* pool) {
+Mesh::Mesh(const std::string& path, const Transformation& transformation, const Material* material, MemoryPool* pool) :
+    vao(0), vbo(0), vboCuda(nullptr) {
     load(path, transformation, material, pool);
 }
 
-Mesh::~Mesh() {}
+Mesh::~Mesh() {
+    // Release interop registrations while the renderer's GL context still exists.
+    if (vboCuda != nullptr)
+        CUDA_CHECK(cudaGraphicsUnregisterResource(vboCuda));
+    if (vbo != 0)
+        glDeleteBuffers(1, &vbo);
+    if (vao != 0)
+        glDeleteVertexArrays(1, &vao);
+}
 
 std::vector<std::string> Mesh::split(const std::string& s, char c) const {
     std::string t = s;
@@ -265,6 +274,11 @@ void Mesh::updateRenderingData(bool rebind) {
         glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(RenderableVertex), vertices.data(), GL_DYNAMIC_DRAW);
     } else {
         if (rebind) {
+            // Resizing a registered GL buffer requires releasing its old registration.
+            if (vboCuda != nullptr) {
+                CUDA_CHECK(cudaGraphicsUnregisterResource(vboCuda));
+                vboCuda = nullptr;
+            }
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
             glBufferData(GL_ARRAY_BUFFER, 3 * facesGpu.size() * sizeof(RenderableVertex), nullptr, GL_DYNAMIC_DRAW);
 

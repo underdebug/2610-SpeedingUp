@@ -841,21 +841,21 @@ void Simulator::updateRenderingData(bool rebind) {
 void Simulator::simulateStep(bool offline) {
     if ((++nSteps) % frameSteps == 0)
         nFrames++;
-    std::cout << "Frame [" << nFrames << "], Step [" << nSteps << "]:" << std::endl;
+    // std::cout << "Frame [" << nFrames << "], Step [" << nSteps << "]:" << std::endl;
 
     updateTransformations();
 
-    Timer timer;
+    // Timer timer;
 
     physicsStep();
     cudaDeviceSynchronize();
-    std::cout << "Physics Step: " << timer.duration() << "s";
-    timer.update();
+    // std::cout << "Physics Step: " << timer.duration() << "s";
+    // timer.update();
 
     collisionStep();
     cudaDeviceSynchronize();
-    std::cout << ", Collision Step: " << timer.duration() << "s";
-    timer.update();
+    // std::cout << ", Collision Step: " << timer.duration() << "s";
+    // timer.update();
 
     if (nSteps % frameSteps == 0) {
         if (disabled.find("remeshing") == disabled.end())
@@ -866,13 +866,13 @@ void Simulator::simulateStep(bool offline) {
 
                 remeshingStep();
                 cudaDeviceSynchronize();
-                std::cout << ", Remeshing Step: " << timer.duration() << "s";
-                timer.update();
+                // std::cout << ", Remeshing Step: " << timer.duration() << "s";
+                // timer.update();
 
                 separationStep(faces);
                 cudaDeviceSynchronize();
-                std::cout << ", Separation Step: " << timer.duration() << "s";
-                timer.update();
+                // std::cout << ", Separation Step: " << timer.duration() << "s";
+                // timer.update();
             } else {
                 std::vector<thrust::device_vector<BackupFace>> faces(cloths.size());
                 for (int i = 0; i < cloths.size(); i++)
@@ -880,13 +880,13 @@ void Simulator::simulateStep(bool offline) {
 
                 remeshingStep();
                 cudaDeviceSynchronize();
-                std::cout << ", Remeshing Step: " << timer.duration() << "s";
-                timer.update();
+                // std::cout << ", Remeshing Step: " << timer.duration() << "s";
+                // timer.update();
 
                 separationStep(faces);
                 cudaDeviceSynchronize();
-                std::cout << ", Separation Step: " << timer.duration() << "s";
-                timer.update();
+                // std::cout << ", Separation Step: " << timer.duration() << "s";
+                // timer.update();
             }
 
         if (!offline)
@@ -896,7 +896,7 @@ void Simulator::simulateStep(bool offline) {
     } else if (!offline)
         updateRenderingData(false);
 
-    std::cout << std::endl;
+    // std::cout << std::endl;
 }
 
 void Simulator::replayStep() {
@@ -1018,6 +1018,7 @@ void Simulator::simulate() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         render();
+        renderer->renderAxes();
         if (!renderer->getPause())
             simulateStep(false);
 
@@ -1073,6 +1074,7 @@ void Simulator::resume() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         render();
+        renderer->renderAxes();
         if (!renderer->getPause())
             simulateStep(false);
 
@@ -1110,6 +1112,7 @@ void Simulator::replay() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         render();
+        renderer->renderAxes();
         if (!renderer->getPause())
             replayStep();
 

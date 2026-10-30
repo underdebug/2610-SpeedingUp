@@ -16,7 +16,6 @@ add_executable(ClothSimulator ${SOURCE})
 target_compile_options(ClothSimulator PRIVATE
     $<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20015,177,20011,20012,20013,20014>
     $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Debug>>:-g;-G;-O0>
-    $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:RelWithDebInfo>>:-lineinfo>
 )
 
 # OpenGL

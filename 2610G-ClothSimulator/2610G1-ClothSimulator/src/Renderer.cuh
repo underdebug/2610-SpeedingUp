@@ -12,9 +12,12 @@
 #include "MouseTool.cuh"
 #include "Vector.cuh"
 #include "Matrix.cuh"
+#include "Shader.cuh"
 
 class Renderer {
 private:
+    Shader* axesShader = nullptr;
+    GLuint axesVao = 0, axesVbo = 0;
     bool pause;
     int width, height;
     MouseTool mouseTool;
@@ -37,6 +40,7 @@ public:
     Renderer(int width, int height);
     ~Renderer();
     void setCenter(const Vector3f& center);
+    void renderAxes() const;
     GLFWwindow* getWindow() const;
     bool getPause() const;
     std::function<void()> drawForPicking;

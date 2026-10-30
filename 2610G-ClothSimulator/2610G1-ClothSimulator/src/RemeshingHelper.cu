@@ -402,6 +402,7 @@ __global__ void checkEdgesToSplit(int nEdges, const Edge* const* edges, Edge** e
     }
 }
 
+// MINGJIE
 __global__ void splitGpu(int nEdges, const Edge* const* edges, const Material* material, Node** addedNodes, Vertex** addedVertices, Edge** addedEdges, Edge** removedEdges, Face** addedFaces, Face** removedFaces, Node* nodePool, Vertex* vertexPool, Edge* edgePool, Face* facePool) {
     int nThreads = gridDim.x * blockDim.x;
 

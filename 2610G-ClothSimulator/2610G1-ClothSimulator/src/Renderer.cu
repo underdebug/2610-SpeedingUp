@@ -3,7 +3,7 @@
 Renderer::Renderer(int width, int height) :
     width(width),
     height(height),
-    pause(true),
+    pause(false), // NODELETE
     lightDirection(0.0f, 0.0f, 1.0f),
     cameraPosition(0.8f, -2.0f, 0.45f) { // NODELETE
     glfwInit();
@@ -43,9 +43,32 @@ Renderer::Renderer(int width, int height) :
     glEnable(GL_MULTISAMPLE);
     glEnable(GL_POLYGON_OFFSET_FILL);
     glPolygonOffset(1.0f, 1.0f);
+
+    // Position + RGB: X red, Y blue, Z green, all starting at the orbit pivot.
+    const float axes[] = {
+        0, 0, 0, 1, 0, 0,  1, 0, 0, 1, 0, 0,
+        0, 0, 0, 0, 0, 1,  0, 1, 0, 0, 0, 1,
+        0, 0, 0, 0, 1, 0,  0, 0, 1, 0, 1, 0
+    };
+    axesShader = new Shader("shader/AxisVertex.glsl", "shader/AxisFragment.glsl");
+    glGenVertexArrays(1, &axesVao);
+    glGenBuffers(1, &axesVbo);
+    glBindVertexArray(axesVao);
+    glBindBuffer(GL_ARRAY_BUFFER, axesVbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(axes), axes, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), nullptr);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float),
+                          reinterpret_cast<void*>(3 * sizeof(float)));
+    glBindVertexArray(0);
+
 }
 
 Renderer::~Renderer() {
+    glDeleteBuffers(1, &axesVbo);
+    glDeleteVertexArrays(1, &axesVao);
+    delete axesShader;
     glfwTerminate();
 }
 
@@ -266,4 +289,30 @@ void Renderer::pickPivot(double x, double y) {
     if (!std::isfinite(point(3)) || std::abs(point(3)) < 1e-8f) return;
     const Vector3f position(point(0) / point(3), point(1) / point(3), point(2) / point(3));
     mouseTool.setPivotOffset(position - center);
+}
+
+void Renderer::renderAxes() const {
+    if (!axesShader) return;
+    GLint previousProgram, previousVao;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgram);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previousVao);
+    const GLboolean depthTest = glIsEnabled(GL_DEPTH_TEST);
+    // Draw over the body so the interaction pivot remains visible.
+    glDisable(GL_DEPTH_TEST);
+    axesShader->use();
+    const Matrix4x4f pivotModel = getModel() * translate(center + mouseTool.pivotOffset);
+    const Vector4f pivotInView = getView() * pivotModel * Vector4f(0, 0, 0, 1);
+    const float depth = -pivotInView(2);
+    // A view-plane axis spans one third of the viewport width at the pivot.
+    // Cancel scene zoom so the guide keeps its display size as the cloth scales.
+    const float aspect = static_cast<float>(width) / max(height, 1);
+    const float axisLength = 2.0f * max(depth, 0.1f) * std::tan(3.14159265f / 8.0f) * aspect / 3.0f;
+    axesShader->setMat4("model", pivotModel * scale(axisLength / mouseTool.scaling));
+    axesShader->setMat4("view", getView());
+    axesShader->setMat4("projection", getProjection());
+    glBindVertexArray(axesVao);
+    glDrawArrays(GL_LINES, 0, 6);
+    glBindVertexArray(previousVao);
+    glUseProgram(previousProgram);
+    if (depthTest) glEnable(GL_DEPTH_TEST);
 }
