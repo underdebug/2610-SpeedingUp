@@ -1,0 +1,49 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "CUDA Debug (F5)",
+            "type": "cuda-gdb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Debug/ClothSimulator",
+            "args": [
+                "simulate",
+                //"conf/sphere.json",
+                "conf/dress-blue-simple.json",
+                "--gpu"
+            ],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "debuggerPath": "/usr/local/cuda/bin/cuda-gdb",
+            "breakOnLaunch": false,
+            "environment": [
+                {
+                    "name": "CUDA_LAUNCH_BLOCKING",
+                    "value": "1"
+                },
+                {
+                    "name": "DEBUGINFOD_URLS",
+                    "value": ""
+                },
+                {
+                    "name": "__NV_PRIME_RENDER_OFFLOAD",
+                    "value": "1"
+                },
+                {
+                    "name": "__GLX_VENDOR_LIBRARY_NAME",
+                    "value": "nvidia"
+                }
+            ],
+            "initCommands": [
+                "set debuginfod enabled off",
+                "set cuda driver_logs off",
+                "set cuda api_failures stop"
+            ],
+            "internalConsoleOptions": "openOnSessionStart",
+            "presentation": {
+                "group": "CUDA debugging",
+                "order": 0
+            }
+        }
+    ]
+}
