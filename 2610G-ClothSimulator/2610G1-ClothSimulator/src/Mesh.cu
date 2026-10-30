@@ -413,7 +413,9 @@ void Mesh::load(const std::string& path, const Transformation& transformation, c
         thrust::device_vector<int> xIndicesGpu = xIndices;
         thrust::device_vector<int> uIndicesGpu = uIndices;
 
-        nodesGpu.resize(nNodes);
+        nodesGpu.resize(nNodes); 
+        // nodesGpu.shrink_to_fit() // release memory NODELETE
+        
         Node** nodesPointer = pointer(nodesGpu);
         initializeNodes<<<GRID_SIZE, BLOCK_SIZE>>>(nNodes, pointer(xGpu), isFree, v.size(), pointer(vGpu), nodesPointer, pool->createNodes(nNodes));
         CUDA_CHECK_LAST();

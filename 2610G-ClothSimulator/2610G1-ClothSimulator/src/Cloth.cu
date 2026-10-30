@@ -852,14 +852,6 @@ void Cloth::render(const Matrix4x4f& model, const Matrix4x4f& view, const Matrix
     mesh->render();
 
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    faceShader->use();
-    faceShader->setMat4("model", model);
-    faceShader->setMat4("view", view);
-    faceShader->setMat4("projection", projection);
-    faceShader->setVec3("color", Vector3f(0.6f, 0.7f, 1.0f));
-    faceShader->setVec3("cameraPosition", cameraPosition);
-    faceShader->setVec3("lightDirection", lightDirection);
-    mesh->render();
 }
 
 void Cloth::load(const std::string& path) {

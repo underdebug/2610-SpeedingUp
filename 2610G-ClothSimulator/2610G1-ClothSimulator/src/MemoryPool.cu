@@ -1,4 +1,29 @@
 #include "MemoryPool.cuh"
+#include <algorithm>
+#include <stdexcept>
+#include <utility>
+
+namespace {
+template<typename T>
+T* allocateGpuBlock(thrust::device_vector<T>& current,
+                    std::vector<thrust::device_vector<T>>& retired,
+                    int& offset, int count) {
+    if (count < 0)
+        throw std::invalid_argument("Negative GPU pool allocation");
+    const size_t requested = static_cast<size_t>(count);
+    if (requested > current.size() - static_cast<size_t>(offset)) {
+        // Allocate first so a failed allocation leaves the current pool intact.
+        thrust::device_vector<T> next(std::max(requested, current.size() * 2));
+        retired.emplace_back(std::move(current));
+        current = std::move(next);
+        offset = 0;
+    }
+    T* result = pointer(current, offset);
+    offset += count;
+    return result;
+}
+}
+
 
 MemoryPool::MemoryPool() :
     nodePointer(0),
@@ -11,9 +36,17 @@ MemoryPool::MemoryPool() :
         edgePool.resize(EDGE_POOL_SIZE);
         facePool.resize(FACE_POOL_SIZE);
     } else {
+        int nodePoolGpuSize = sizeof(Node) * NODE_POOL_SIZE;
         nodePoolGpu.resize(NODE_POOL_SIZE);
+
+        int vertexPoolGpuSize = sizeof(Vertex) * NODE_POOL_SIZE;
         vertexPoolGpu.resize(VERTEX_POOL_SIZE);
+
+        int edgePoolGpuSize = sizeof(Edge) * NODE_POOL_SIZE;
         edgePoolGpu.resize(EDGE_POOL_SIZE);
+
+        int facePoolGpuSize = sizeof(Face) * NODE_POOL_SIZE;
+        int memSize = nodePoolGpuSize + vertexPoolGpuSize + edgePoolGpuSize + facePoolGpuSize;
         facePoolGpu.resize(FACE_POOL_SIZE);
     }
 }
@@ -77,41 +110,17 @@ Face* MemoryPool::createFace(const Vertex* vertex0, const Vertex* vertex1, const
 }
 
 Node* MemoryPool::createNodes(int nNodes) {
-    if (nodePointer + nNodes > NODE_POOL_SIZE) {
-        std::cerr << "Memory pool of nodes run out!" << std::endl;
-        exit(1);
-    }
-
-    nodePointer += nNodes;
-    return pointer(nodePoolGpu, nodePointer - nNodes);
+    return allocateGpuBlock(nodePoolGpu, retiredNodePoolsGpu, nodePointer, nNodes);
 }
 
 Vertex* MemoryPool::createVertices(int nVertices) {
-    if (vertexPointer + nVertices > VERTEX_POOL_SIZE) {
-        std::cerr << "Memory pool of vertices run out!" << std::endl;
-        exit(1);
-    }
-
-    vertexPointer += nVertices;
-    return pointer(vertexPoolGpu, vertexPointer - nVertices);
+    return allocateGpuBlock(vertexPoolGpu, retiredVertexPoolsGpu, vertexPointer, nVertices);
 }
 
 Edge* MemoryPool::createEdges(int nEdges) {
-    if (edgePointer + nEdges > EDGE_POOL_SIZE) {
-        std::cerr << "Memory pool of edges run out!" << std::endl;
-        exit(1);
-    }
-
-    edgePointer += nEdges;
-    return pointer(edgePoolGpu, edgePointer - nEdges);
+    return allocateGpuBlock(edgePoolGpu, retiredEdgePoolsGpu, edgePointer, nEdges);
 }
 
 Face* MemoryPool::createFaces(int nFaces) {
-    if (facePointer + nFaces >= FACE_POOL_SIZE) {
-        std::cerr << "Memory pool of faces run out!" << std::endl;
-        exit(1);
-    }
-
-    facePointer += nFaces;
-    return pointer(facePoolGpu, facePointer - nFaces);
+    return allocateGpuBlock(facePoolGpu, retiredFacePoolsGpu, facePointer, nFaces);
 }

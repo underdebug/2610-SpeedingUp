@@ -5,8 +5,11 @@ Simulator::Simulator(SimulationMode mode, const std::string& path, const std::st
     nSteps(0),
     nFrames(0),
     directory(directory) {
+    std::cout << "Loading scene..." << std::endl;
     pool = mode != Replay ? new MemoryPool() : nullptr;
-    renderer = mode == Simulate || mode == Resume || mode == Replay ? new Renderer(900, 900) : nullptr;
+    // Create the window only after loading and initial remeshing have finished.
+    // CUDA initialization under a debugger can take minutes without polling events.
+    renderer = nullptr;
 
     std::ifstream fin(mode == Simulate || mode == SimulateOffline ? path : directory + "/config.json");
     if (!fin.is_open()) {
@@ -913,10 +916,22 @@ void Simulator::replayStep() {
 }
 
 void Simulator::bind() {
+    renderer = new Renderer(900, 900);
+    if (!obstacles.empty()) {
+        Bounds bodyBounds;
+        for (const Obstacle* obstacle : obstacles)
+            bodyBounds += obstacle->bounds(transformations);
+        renderer->setCenter(bodyBounds.center());
+    }
+    renderer->drawForPicking = [this]() {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        render();
+    };
     for (Cloth* cloth : cloths)
         cloth->bind();
     for (Obstacle* obstacle : obstacles)
         obstacle->bind();
+    std::cout << "Viewer ready (Space: pause/resume)." << std::endl;
 }
 
 void Simulator::render() const {
@@ -978,6 +993,7 @@ bool Simulator::finished() const {
 
 void Simulator::simulate() {
     Timer timer;
+    std::cout << "Initializing simulation..." << std::endl;
 
     if (disabled.find("remeshing") == disabled.end())
         if (!gpu) {

@@ -13,10 +13,10 @@
 #include "Face.cuh"
 
 // Fixed pools: lower these limits to reduce startup memory usage.
-const int NODE_POOL_SIZE = 1000000;
-const int VERTEX_POOL_SIZE = 1000000;
-const int EDGE_POOL_SIZE = 1000000;
-const int FACE_POOL_SIZE = 1000000;
+const int NODE_POOL_SIZE = 1000; // NODELETE
+const int VERTEX_POOL_SIZE = 1000;
+const int EDGE_POOL_SIZE = 1000;
+const int FACE_POOL_SIZE = 1000;
 
 extern bool gpu;
 
@@ -31,6 +31,11 @@ private:
     thrust::device_vector<Vertex> vertexPoolGpu;
     thrust::device_vector<Edge> edgePoolGpu;
     thrust::device_vector<Face> facePoolGpu;
+    // Retain exhausted blocks: mesh objects contain raw pointers into them.
+    std::vector<thrust::device_vector<Node>> retiredNodePoolsGpu;
+    std::vector<thrust::device_vector<Vertex>> retiredVertexPoolsGpu;
+    std::vector<thrust::device_vector<Edge>> retiredEdgePoolsGpu;
+    std::vector<thrust::device_vector<Face>> retiredFacePoolsGpu;
 
 public:
     MemoryPool();

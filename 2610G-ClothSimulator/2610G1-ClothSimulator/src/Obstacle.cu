@@ -41,6 +41,17 @@ Mesh* Obstacle::getMesh() const {
     return mesh;
 }
 
+Bounds Obstacle::bounds(const std::vector<Transformation>& transformations) const {
+    Bounds result;
+    // Only used when choosing the initial camera pivot; no per-frame GPU readback.
+    thrust::host_vector<Vector3f> points;
+    if (gpu) points = baseGpu;
+    else points.assign(base.begin(), base.end());
+    for (const Vector3f& point : points)
+        result += motionIndex >= 0 ? transformations[motionIndex].applyToPoint(point) : point;
+    return result;
+}
+
 void Obstacle::transform(const std::vector<Transformation>& transformations) {
     if (motionIndex > -1) {
         Transformation transformation = transformations[motionIndex];
@@ -90,6 +101,7 @@ void Obstacle::bind() {
 }
 
 void Obstacle::render(const Matrix4x4f& model, const Matrix4x4f& view, const Matrix4x4f& projection, const Vector3f& cameraPosition, const Vector3f& lightDirection) const {
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     shader->use();
     shader->setMat4("model", model);
     shader->setMat4("view", view);
@@ -98,4 +110,9 @@ void Obstacle::render(const Matrix4x4f& model, const Matrix4x4f& view, const Mat
     shader->setVec3("cameraPosition", cameraPosition);
     shader->setVec3("lightDirection", lightDirection);
     mesh->render();
+
+    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    shader->setVec3("color", Vector3f(0.15f, 0.15f, 0.15f));
+    mesh->render();
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }

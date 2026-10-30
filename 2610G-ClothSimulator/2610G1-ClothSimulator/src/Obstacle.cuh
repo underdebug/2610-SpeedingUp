@@ -28,6 +28,7 @@ public:
     Obstacle(const std::string& path, int motionIndex, const std::vector<Transformation>& transformations, MemoryPool* pool);
     ~Obstacle();
     Mesh* getMesh() const;
+    Bounds bounds(const std::vector<Transformation>& transformations) const;
     void transform(const std::vector<Transformation>& transformations);
     void step(float dt, const std::vector<Transformation>& transformations);
     void bind();

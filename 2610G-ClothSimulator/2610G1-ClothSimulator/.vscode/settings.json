@@ -1,6 +1,7 @@
 {
     "cmake.buildDirectory" : "${workspaceFolder}/build/${buildType}",
     "cmake.buildBeforeRun": false,
+    "cmake.parallelJobs": 2,
     "cmake.configureEnvironment": {
         "CUDACXX": "/usr/local/cuda/bin/nvcc"
     },

@@ -3,15 +3,7 @@
 Renderer::Renderer(int width, int height) :
     width(width),
     height(height),
-    leftPress(false),
-    rightPress(false),
     pause(true),
-    leftX(INFINITY),
-    leftY(INFINITY),
-    rightX(INFINITY),
-    rightY(INFINITY),
-    scaling(1.0f),
-    rotation(1.0f),
     lightDirection(0.0f, 0.0f, 1.0f),
     cameraPosition(0.8f, -2.0f, 0.45f) { // NODELETE
     glfwInit();
@@ -61,29 +53,6 @@ Matrix4x4f Renderer::scale(float scaling) const {
     Matrix4x4f ans;
 
     ans(0, 0) = ans(1, 1) = ans(2, 2) = scaling;
-    ans(3, 3) = 1.0f;
-
-    return ans;
-}
-
-Matrix4x4f Renderer::rotate(const Vector3f& v, float angle) const {
-    Vector3f axis = v.normalized();
-    float s = sin(angle);
-    float c = cos(angle);
-    Matrix4x4f ans;
-
-    ans(0, 0) = (1.0f - c) * axis(0) * axis(0) + c;
-    ans(0, 1) = (1.0f - c) * axis(1) * axis(0) - s * axis(2);
-    ans(0, 2) = (1.0f - c) * axis(2) * axis(0) + s * axis(1);
-
-    ans(1, 0) = (1.0f - c) * axis(0) * axis(1) + s * axis(2);
-    ans(1, 1) = (1.0f - c) * axis(1) * axis(1) + c;
-    ans(1, 2) = (1.0f - c) * axis(2) * axis(1) - s * axis(0);
-
-    ans(2, 0) = (1.0f - c) * axis(0) * axis(2) - s * axis(1);
-    ans(2, 1) = (1.0f - c) * axis(1) * axis(2) + s * axis(0);
-    ans(2, 2) = (1.0f - c) * axis(2) * axis(2) + c;
-
     ans(3, 3) = 1.0f;
 
     return ans;
@@ -146,43 +115,54 @@ void Renderer::framebufferSizeCallback(int width, int height) {
 
 void Renderer::mouseButtonCallback(int button, int action, int mods) {
     double x, y;
+    glfwGetCursorPos(window, &x, &y);
+    mouseTool.button(button, action, x, y);
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-        leftPress = true;
-        leftX = leftY = INFINITY;
-    } else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
-        rightPress = true;
-        rightX = rightY = INFINITY;
-    } else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_RELEASE)
-        rightPress = false;
-    else if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE)
-        leftPress = false;
+        const double now = glfwGetTime();
+        if ((mods & GLFW_MOD_ALT) && lastLeftPress >= 0 && now - lastLeftPress < 0.4
+            && std::hypot(x - lastPressX, y - lastPressY) < 5.0) {
+            pickPivot(x, y);
+            lastLeftPress = -1.0;
+        } else {
+            lastLeftPress = now;
+            lastPressX = x; lastPressY = y;
+        }
+    }
 }
 
 void Renderer::cursorPosCallback(double x, double y) {
-    if (leftPress && leftX != INFINITY && leftY != INFINITY) {
-        Vector3f a = (Vector3f(static_cast<float>(leftX) / width - 0.5f, 0.5f - static_cast<float>(leftY) / height, 1.0f)).normalized();
-        Vector3f b = (Vector3f(static_cast<float>(x) / width - 0.5f, 0.5f - static_cast<float>(y) / height, 1.0f)).normalized();
-        Vector3f axis = a.cross(b);
-        float angle = a.dot(b);
-        rotation = rotate(axis, 10.0f * acos(angle)) * rotation;
-    }
-    if (rightPress && rightX != INFINITY && rightY != INFINITY) {
-        Vector3f v(static_cast<float>(x) - rightX, rightY - static_cast<float>(y), 0.0f);
-        translation += 0.005f * v;
-    }
-
-    leftX = rightX = x;
-    leftY = rightY = y;
+    int w, h;
+    glfwGetWindowSize(window, &w, &h);
+    mouseTool.move(x, y, w, h, cameraPosition - center, navigationModifiers());
 }
 
 void Renderer::scrollCallback(double x, double y) {
-    scaling += 0.1 * y;
-    scaling = max(scaling, 0.01);
+    double cursorX, cursorY;
+    int w, h;
+    glfwGetCursorPos(window, &cursorX, &cursorY);
+    glfwGetWindowSize(window, &w, &h);
+    mouseTool.scroll(x, y, cursorX, cursorY, w, h, cameraPosition - center, navigationModifiers());
+}
+
+void Renderer::setCenter(const Vector3f& value) {
+    center = value;
+    cameraPosition = center + Vector3f(0.8f, -2.0f, 0.6f);
+    mouseTool.reset();
 }
 
 void Renderer::keyCallback(int key, int scancode, int action, int mods) {
+    if (action == GLFW_PRESS && (key == GLFW_KEY_LEFT_SHIFT || key == GLFW_KEY_RIGHT_SHIFT
+        || key == GLFW_KEY_LEFT_CONTROL || key == GLFW_KEY_RIGHT_CONTROL
+        || key == GLFW_KEY_LEFT_ALT || key == GLFW_KEY_RIGHT_ALT
+        || key == GLFW_KEY_LEFT_SUPER || key == GLFW_KEY_RIGHT_SUPER)) {
+        double x, y;
+        glfwGetCursorPos(window, &x, &y);
+        mouseTool.anchor(x, y);
+    }
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
+    else if (key == GLFW_KEY_HOME && action == GLFW_PRESS)
+        mouseTool.reset();
     else if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
         pause = !pause;
 }
@@ -204,14 +184,86 @@ Vector3f Renderer::getCameraPosition() const {
 }
 
 Matrix4x4f Renderer::getModel() const {
-    return translate(translation) * scale(static_cast<float>(scaling)) * rotation;
+    const Vector3f pivot = center + mouseTool.pivotOffset;
+    return translate(pivot + mouseTool.translation) * scale(mouseTool.scaling) * mouseTool.rotation * translate(-1.0f * pivot);
 }
 
 Matrix4x4f Renderer::getView() const {
     // Frame the standing character from the front at a slight angle (Z is up).
-    return lookAt(cameraPosition, Vector3f(0.0f, 0.0f, -0.15f), Vector3f(0.0f, 0.0f, 1.0f));
+    return lookAt(cameraPosition, center, Vector3f(0.0f, 0.0f, 1.0f));
 }
 
 Matrix4x4f Renderer::getProjection() const {
-    return perspective(45.0f, static_cast<float>(width) / height, 0.1f, 100.0f);
+    return perspective(45.0f * 3.14159265f / 180.0f, static_cast<float>(width) / max(height, 1), 0.1f, 100.0f);
+}
+
+int Renderer::navigationModifiers() const {
+    int mods = 0;
+    if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS) mods |= GLFW_MOD_SHIFT;
+    if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS) mods |= GLFW_MOD_CONTROL;
+    if (glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS) mods |= GLFW_MOD_ALT;
+    if (glfwGetKey(window, GLFW_KEY_LEFT_SUPER) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS) mods |= GLFW_MOD_SUPER;
+    return mods;
+}
+
+void Renderer::pickPivot(double x, double y) {
+    int w, h, fw, fh;
+    glfwGetWindowSize(window, &w, &h);
+    glfwGetFramebufferSize(window, &fw, &fh);
+    if (w <= 0 || h <= 0 || fw <= 0 || fh <= 0) return;
+    const int px = static_cast<int>(x * fw / w);
+    const int py = fh - 1 - static_cast<int>(y * fh / h);
+    if (px < 0 || px >= fw || py < 0 || py >= fh) return;
+    if (!drawForPicking) return;
+    drawForPicking();
+    // Resolve the multisampled back-buffer depth before reading a single pixel.
+    GLuint fbo, depth;
+    glGenFramebuffers(1, &fbo);
+    glGenRenderbuffers(1, &depth);
+    glBindRenderbuffer(GL_RENDERBUFFER, depth);
+    GLint depthBits = 24;
+    glGetFramebufferAttachmentParameteriv(GL_DRAW_FRAMEBUFFER, GL_DEPTH,
+                                          GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE, &depthBits);
+    glRenderbufferStorage(GL_RENDERBUFFER, depthBits == 32 ? GL_DEPTH_COMPONENT32 :
+                          depthBits == 16 ? GL_DEPTH_COMPONENT16 : GL_DEPTH_COMPONENT24, fw, fh);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
+    glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_BACK);
+    glBlitFramebuffer(0, 0, fw, fh, 0, 0, fw, fh, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
+    glReadBuffer(GL_NONE);
+    float value = 1.0f;
+    glReadPixels(px, py, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &value);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    glDeleteRenderbuffers(1, &depth);
+    glDeleteFramebuffers(1, &fbo);
+    if (!(value >= 0.0f && value < 1.0f)) return;
+    const Vector4f clip(2.0f * (px + 0.5f) / fw - 1.0f,
+                        2.0f * (py + 0.5f) / fh - 1.0f, 2.0f * value - 1.0f, 1.0f);
+    // Solve the inverse projection with pivoting; Matrix::inverse supports only 2x2.
+    const Matrix4x4f transform = getProjection() * getView() * getModel();
+    double system[4][5];
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) system[r][c] = transform(r, c);
+        system[r][4] = clip(r);
+    }
+    for (int c = 0; c < 4; ++c) {
+        int pivot = c;
+        for (int r = c + 1; r < 4; ++r)
+            if (std::abs(system[r][c]) > std::abs(system[pivot][c])) pivot = r;
+        if (std::abs(system[pivot][c]) < 1e-12) return;
+        for (int j = c; j < 5; ++j) std::swap(system[c][j], system[pivot][j]);
+        const double divisor = system[c][c];
+        for (int j = c; j < 5; ++j) system[c][j] /= divisor;
+        for (int r = 0; r < 4; ++r) if (r != c) {
+            const double factor = system[r][c];
+            for (int j = c; j < 5; ++j) system[r][j] -= factor * system[c][j];
+        }
+    }
+    const Vector4f point(system[0][4], system[1][4], system[2][4], system[3][4]);
+    if (!std::isfinite(point(3)) || std::abs(point(3)) < 1e-8f) return;
+    const Vector3f position(point(0) / point(3), point(1) / point(3), point(2) / point(3));
+    mouseTool.setPivotOffset(position - center);
 }
