@@ -19,6 +19,23 @@ target_compile_options(ClothSimulator PRIVATE
     $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Debug>>:-g;-O0>
 )
 
+# Enable GPU kernel debugging only for the listed .cu files in Debug builds.
+# Uncomment the files you want to debug; paths are relative to this directory.
+# MINGJIE
+set(CUDA_DEVICE_DEBUG_SOURCES
+    src/RemeshingHelper.cu
+    src/PhysicsHelper.cu
+    src/CollisionHelper.cu
+)
+foreach(debug_source IN LISTS CUDA_DEVICE_DEBUG_SOURCES)
+    if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${debug_source}" OR
+        NOT debug_source MATCHES "\\.cu$")
+        message(FATAL_ERROR "GPU debug source must be an existing .cu file: ${debug_source}")
+    endif()
+    set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/${debug_source}"
+        APPEND PROPERTY COMPILE_OPTIONS "$<$<CONFIG:Debug>:-G>")
+endforeach()
+
 # OpenGL
 find_package(OpenGL REQUIRED)
 

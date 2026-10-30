@@ -29,6 +29,7 @@ const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
+const { Session } = require('inspector');
 const execFileAsync = promisify(execFile);
 
 function log(...args) {
@@ -1470,3 +1471,16 @@ async function activate(context) {
 
 function deactivate() {}
 module.exports = { activate, deactivate };
+
+// NO SESSION
+// F6 create c++ test file, filename_.cc
+//    start debug c++ filename_.cc
+
+// F8 create python test file, filename_.py
+//    start debug python filename_.py
+
+// SESSION
+// F8 pick tocken parameter
+//    pick selection parameter
+//    run // -exec command (include breakpoint)
+//    no selection, no tocken, run python file   
