@@ -42,6 +42,15 @@ For example:
 ./build/ClothSimulator simulate conf/sphere.json --gpu
 ```
 
+For a remeshing test scene using the original square cloth and sphere meshes,
+with coarse adaptive remeshing and 2 simulation substeps per frame:
+
+```sh
+./build/ClothSimulator simulate conf/sphere_test.json --gpu
+```
+
+VS Code F5 and CMake debugging load this test scene by default.
+
 ## Simulate (Offline)
 
 Similar to simulate mode, but will save cloth mesh for every frame to output directory.

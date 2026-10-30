@@ -8,8 +8,7 @@
             "program": "${workspaceFolder}/build/Debug/ClothSimulator",
             "args": [
                 "simulate",
-                //"conf/sphere.json",
-                "conf/dress-blue-simple.json",
+                "conf/sphere_test.json",
                 "--gpu"
             ],
             "cwd": "${workspaceFolder}",

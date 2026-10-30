@@ -15,7 +15,8 @@ file(GLOB_RECURSE SOURCE "src/*.cu" "src/*.cuh")
 add_executable(ClothSimulator ${SOURCE})
 target_compile_options(ClothSimulator PRIVATE
     $<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20015,177,20011,20012,20013,20014>
-    $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Debug>>:-g;-G;-O0>
+    # Host debugging only; omit -G to retain device optimization.
+    $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Debug>>:-g;-O0>
 )
 
 # OpenGL
