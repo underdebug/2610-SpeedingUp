@@ -465,6 +465,7 @@ void Mesh::load(const std::string& path, const Transformation& transformation, c
     updateIndices();
     updateFaceGeometries();
     updateNodeGeometries();
+    // -exec source Mesh.cu_.py load
 }
 
 void Mesh::save(const std::string& path) {
