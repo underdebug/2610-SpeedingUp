@@ -14,7 +14,8 @@ include_directories(src)
 file(GLOB_RECURSE SOURCE "src/*.cu" "src/*.cuh")
 add_executable(ClothSimulator ${SOURCE})
 target_compile_options(ClothSimulator PRIVATE
-    $<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20015,177,20011,20012,20013,20014>
+    $<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20015,177,20011,20012,20013,20014,940>
+    $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CXX_COMPILER_ID:GNU,Clang>>:-Xcompiler=-Wno-return-type>
     # Host debugging only; omit -G to retain device optimization.
     $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Debug>>:-g;-O0>
 )
@@ -57,6 +58,9 @@ endif()
 find_package(Eigen3 REQUIRED)
 
 # CUDA
+if (POLICY CMP0146)
+    cmake_policy(SET CMP0146 OLD)
+endif()
 find_package(CUDA REQUIRED)
 get_filename_component(CUDA_RUNTIME_LIBRARY_DIR "${CUDA_cudart_static_LIBRARY}" DIRECTORY)
 # Prefer this toolkit's runtime over older CUDA libraries in system directories.

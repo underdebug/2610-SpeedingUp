@@ -7,6 +7,8 @@ git clone https://gitlab.com/libeigen/eigen.git
 
 git clone https://github.com/g-truc/glm.git
 
+git clone --recursive https://github.com/freeglut/freeglut.git
+
 git clone --recursive https://github.com/baldurk/renderdoc.git
 
 sudo apt update
