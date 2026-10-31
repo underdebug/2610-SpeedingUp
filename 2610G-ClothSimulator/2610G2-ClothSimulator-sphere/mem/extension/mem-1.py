@@ -20,7 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-LOG = 0 # 10/29 2026
+LOG = 1 # 10/26 2026
 
 import gdb
 import subprocess
@@ -39,10 +39,7 @@ np.set_printoptions(formatter={
     'float_kind': lambda x: f'{x:8.3f}',
     'int_kind': lambda x: f'{x:3d}',
 })
-def printf(*args, **kwargs):
-    if args and isinstance(args[0], str):
-        args = (repr(args[0]),) + args[1:]
-    print(*args, **kwargs)
+def printf(*args, **kwargs): print(*args, **kwargs)
 
 PROJECT_ROOT = os.environ.get('PROJECT_ROOT')
 if PROJECT_ROOT:              PATH = os.path.join(os.path.abspath(PROJECT_ROOT), 'mem')
@@ -424,8 +421,7 @@ def cpu_(para, Type=None, Size=None):
         elif type_name in {'std::filesystem::path', 'std::filesystem::__cxx11::path'}:
             return cpu_(para['_M_pathname'])
 
-        elif type_name in {'std::string', 'std::__cxx11::string',
-                           'std::basic_string', 'std::__cxx11::basic_string'}:
+        elif type_name in {'std::basic_string', 'std::__cxx11::basic_string'}:
             n = int(para['_M_string_length'])
             s = para['_M_dataplus']['_M_p'].string(length=n)
             return np.str_(s)  

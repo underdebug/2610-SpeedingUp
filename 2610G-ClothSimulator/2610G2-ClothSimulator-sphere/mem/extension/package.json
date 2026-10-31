@@ -18,10 +18,6 @@
         "title": "debug"
       },
       {
-        "command": "script",
-        "title": "script"
-      },
-      {
         "command": "mem",
         "title": "mem"
       },
@@ -59,18 +55,6 @@
         "command": "bookmarks.clear"
       },
       {
-        "key": "ctrl+f",
-        "command": "actions.find"
-      },
-      {
-        "key": "f3",
-        "command": "editor.action.nextMatchFindAction"
-      },
-      {
-        "key": "shift+f3",
-        "command": "editor.action.previousMatchFindAction"
-      },
-      {
         "key": "alt+left",
         "command": "workbench.action.navigateBack"
       },
@@ -79,18 +63,19 @@
         "command": "workbench.action.navigateForward"
       },
       {
-        "key": "f5",
-        "command": "workbench.action.debug.continue",
+        "key": "f6",
+        "command": "debug",
+        "when": "(filesExplorerFocus || editorTextFocus) && !inDebugMode"
+      },
+      {
+        "key": "shift+f6",
+        "command": "workbench.action.debug.stop",
         "when": "inDebugMode"
       },
       {
-        "key": "f5",
-        "command": "workbench.action.debug.start",
-        "when": "!inDebugMode"
-      },
-      {
-        "key": "shift+f5",
-        "command": "workbench.action.debug.stop"
+        "key": "f8",
+        "command": "mem",
+        "when": "editorTextFocus && (inDebugMode || editorLangId == python)"
       },
       {
         "key": "f9",
@@ -100,41 +85,6 @@
         "key": "f10",
         "command": "stepOver",
         "when": "debugState == stopped"
-      },
-      {
-        "key": "f11",
-        "command": "workbench.action.debug.stepInto",
-        "when": "debugState == stopped"
-      },
-      {
-        "key": "shift+f11",
-        "command": "workbench.action.debug.stepOut",
-        "when": "debugState == stopped"
-      },
-      {
-        "key": "f12",
-        "command": "editor.action.revealDefinition",
-        "when": "editorHasDefinitionProvider && editorTextFocus && !isInEmbeddedEditor"
-      },
-      {
-        "key": "f6",
-        "command": "debug",
-        "when": "editorTextFocus && !inDebugMode"
-      },
-      {
-        "key": "ctrl+f6",
-        "command": "script",
-        "when": "editorTextFocus && !inDebugMode"
-      },
-      {
-        "key": "shift+f6",
-        "command": "stop",
-        "when": "inDebugMode"
-      },
-      {
-        "key": "f8",
-        "command": "mem",
-        "when": "editorTextFocus && (inDebugMode || editorLangId == python)"
       }
     ]
   }

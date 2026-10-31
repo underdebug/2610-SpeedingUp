@@ -29,7 +29,6 @@ const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
-const { Session } = require('inspector');
 const execFileAsync = promisify(execFile);
 
 function log(...args) {
@@ -1180,122 +1179,6 @@ async function cmdDebug() {
     }
 }
 
-async function createPythonScript() {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-        log('vscode.window.activeTextEditor; !editor return');
-        return;
-    }
-    
-    const filename = editor.document.uri.fsPath;
-    const isPythonFile = editor.document.languageId === 'python' || /\.py$/i.test(filename);
-    const isCppFile = /\.(c|cpp|h|hpp)$/i.test(filename);   
-    const isShaderFile = /\.(vert|frag|comp|glsl)$/i.test(filename);
-    const isKernelFile = /\.(cu|cuh)$/i.test(filename);
-
-    if(isPythonFile){
-        return filename;
-    }
-    
-    const source = `${filename}_.py`;
-    const wrapper = "printf('hello mingjie!')\n";
-    try {
-        await fs.promises.writeFile(source, wrapper, { encoding: 'utf8', flag: 'wx' });
-    } catch (e) {
-        if (e.code !== 'EEXIST') {
-            log('Error creating script wrapper', e.message);
-            vscode.window.showErrorMessage(`mem: ${e.message}`);
-            return;
-        }
-    } 
-    return "";
-}
-
-async function scriptDebug(filename) {
-    const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(filename));
-    if (!folder) {
-        vscode.window.showErrorMessage('mem: Open the project folder before starting the Python script.');
-        return;
-    }
-    const scriptPath = filename.replace(/\\/g, '/');
-    await fs.promises.access(scriptPath, fs.constants.R_OK);
-    const configurations = vscode.workspace.getConfiguration('launch', folder.uri)
-        .get('configurations', []);
-    const configuration = configurations.find(config => config.name === 'GDB'
-        && config.type === 'cppdbg' && config.request === 'launch'
-        && (!config.MIMode || config.MIMode === 'gdb'));
-    if (!configuration) {
-        vscode.window.showErrorMessage('mem: Add a GDB launch configuration named "GDB" to launch.json.');
-        return;
-    }
-
-    // Run inside GDB, where the gdb Python module and debug symbols exist.
-    // Share GDB's Python globals, including the imported mem helpers.
-    const scriptCommand = `python __file__ = ${JSON.stringify(scriptPath)}; exec(compile(open(__file__, 'rb').read(), __file__, 'exec'), globals())`;
-    const setupCommands = (configuration.setupCommands || []).filter(command => {
-        const match = /^\s*source\s+(.+?)\s*$/.exec(command.text || '');
-        const sourcePath = match && match[1].replace(/^"(.*)"$/, '$1')
-            .replace(/\$\{workspaceFolder\}/g, folder.uri.fsPath).replace(/\\/g, '/');
-        return sourcePath !== scriptPath && command.text !== scriptCommand;
-    });
-    setupCommands.push({
-        text: scriptCommand,
-        description: 'Run the selected Python script',
-        ignoreFailures: false
-    });
-
-    // Start explicitly and await configuration resolution and the build task.
-    // This does not depend on the dropdown selection or a temporary provider.
-    const started = await vscode.debug.startDebugging(folder, {
-        ...configuration,
-        name: 'GDB: Python script',
-        stopAtEntry: false,
-        setupCommands,
-        internalConsoleOptions: 'openOnSessionStart'
-    });
-    if (!started) {
-        vscode.window.showErrorMessage('mem: Could not start the Python script.');
-    }
-}
-
-async function cmdScript() {
-    if (vscode.debug.activeDebugSession) {
-        vscode.window.showErrorMessage('mem: Stop the current debug session before starting the Python script.');
-        return;
-    }
-
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) return;
-
-    const filename = editor.document.uri.fsPath;
-    if(await isPythonFile(filename)){
-        LOG && log('scriptDebug', 'isPythonFile:true', filename)
-        await scriptDebug(filename);
-        return;    
-    }
-
-    let sourcefile = "";
-    let testfile = "";
-
-    const filename_sub = filename.replace(/_?\.[^./\\]+$/, '');
-    const filename_add =  `${filename}_.py`;
-
-    if (fs.existsSync(filename_sub)){
-        sourcefile = filename_sub;
-        testfile = filename;
-    } 
-    else if (fs.existsSync(filename_add)){
-        sourcefile = filename;
-        testfile = filename_add;
-    }
-    else {
-        await createPythonScript();
-        return;
-    }
-
-    await scriptDebug(testfile);
-}
-
 function expandKernelCondition(editor, condition) {
     // Expand global thread coordinates only inside a CUDA kernel body.
     const source = editor.document.getText().slice(0,
@@ -1375,15 +1258,6 @@ async function toggleBreakpoint(){
 }
 
 async function activate(context) {
-    // NODELETE
-    // try {
-    //     if (await openingProject(context)) {
-    //         return;
-    //     }
-    // } catch (error) {
-    //     console.error('mem: Error opening project', error);
-    // }
-
     try {
         registerShaderDefinitions(vscode, context);
     } catch (error) {
@@ -1410,23 +1284,6 @@ async function activate(context) {
         } catch (error) {
             console.error('mem: Error running cmdDebug', error);
         }
-    });
-
-    const scriptCmd = vscode.commands.registerCommand('script', async () => { // Ctrl+F6
-        try {
-            const editor = vscode.window.activeTextEditor;
-            if (editor && !editor.document.isClosed && !await editor.document.save()) return;
-            if (!await vscode.workspace.saveAll()) return;
-            await cmdScript();
-        } catch (error) {
-            console.error('mem: Error running cmdScript', error);
-        }
-    });
-
-    const stopCmd = vscode.commands.registerCommand('stop', async () => { // Shift+F6
-        const editor = vscode.window.activeTextEditor;
-        if (editor && !editor.document.isClosed && !await editor.document.save()) return;
-        await vscode.commands.executeCommand('workbench.action.debug.stop');
     });
 
     const toggleBreakpointCmd = vscode.commands.registerCommand('toggleBreakpoint', async () => { // F9
@@ -1456,7 +1313,7 @@ async function activate(context) {
         }
     });
 
-    context.subscriptions.push(memCmd, debugCmd, scriptCmd, stopCmd, toggleBreakpointCmd, stepOverCmd, toggleBreakpointCmd);
+    context.subscriptions.push(memCmd, debugCmd, stopCmd, toggleBreakpointCmd, stepOverCmd, toggleBreakpointCmd);
 
     // Finish activation before updating configuration files in the background.
     const settingsTask = setImmediate(async () => {
@@ -1471,16 +1328,3 @@ async function activate(context) {
 
 function deactivate() {}
 module.exports = { activate, deactivate };
-
-// NO SESSION
-// F6 create c++ test file, filename_.cc
-//    start debug c++ filename_.cc
-
-// F8 create python test file, filename_.py
-//    start debug python filename_.py
-
-// SESSION
-// F8 pick tocken parameter
-//    pick selection parameter
-//    run // -exec command (include breakpoint)
-//    no selection, no tocken, run python file   
