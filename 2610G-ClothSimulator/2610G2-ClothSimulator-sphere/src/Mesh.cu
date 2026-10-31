@@ -465,7 +465,11 @@ void Mesh::load(const std::string& path, const Transformation& transformation, c
     updateIndices();
     updateFaceGeometries();
     updateNodeGeometries();
-    // -exec source Mesh.cu_.py load
+
+    return;
+    // -exec source Mesh.cu_.py load load_square.png QtAgg
+    // -exec source Mesh.cu_.py load load_sphere.png QtAgg
+    // -exec source Mesh.cu_.py load load_sphere.png
 }
 
 void Mesh::save(const std::string& path) {

@@ -24,9 +24,9 @@ LOG = 0; // 10/29 2026
 
 const vscode = require('vscode');
 const { registerShaderDefinitions } = require('./definitions');
-const { vscodeSettings } = require('./settings');
 const path = require('path');
 const fs = require('fs');
+const { prepareCpp } = require('./prepareCpp.cpp');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
@@ -634,16 +634,18 @@ async function showBuildError(error) {
     vscode.window.showErrorMessage('mem: Build failed. See the compiler output.');
 }
 
-async function buildCpp(editor, source = editor.document.uri.fsPath) {
+async function buildCpp(editor, source = editor.document.uri.fsPath, preparedSource) {
     try {
         if (!await vscode.workspace.saveAll()) return false;
         const filename = editor.document.uri.fsPath;
         const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
         const root = folder ? folder.uri.fsPath : path.dirname(filename);
         await fs.promises.mkdir(appBuildDirectory(editor), { recursive: true });
+        const prepared = preparedSource || await prepareCpp(path.resolve(source), appBuildDirectory(editor));
         const { stdout, stderr } = await execFileAsync(
             process.env.CXX || 'g++',
-            ['-std=c++17', '-O0', '-g3', source, '-o', appExecutable(editor)],
+            ['-std=c++17', '-O0', '-ggdb3', '-fno-eliminate-unused-debug-types',
+                ...prepared.args, prepared.source, '-o', appExecutable(editor)],
             { cwd: root, maxBuffer: 10 * 1024 * 1024 }
         );
         if (stdout) vscode.debug.activeDebugConsole.appendLine(stdout.trimEnd());
@@ -663,7 +665,7 @@ async function buildCpp(editor, source = editor.document.uri.fsPath) {
         if (!started) {
             vscode.window.showErrorMessage('mem: Could not start the C++ debugger.');
         }
-        // Debugging is handled here; skip the caller's launch.json configuration.
+        // F6 uses this standalone launch configuration.
         return false;
     } catch (e) {
         await showBuildError(e);
@@ -707,8 +709,7 @@ async function buildShader(editor, source) {
         if (!started) {
             vscode.window.showErrorMessage('mem: Could not start the shader debugger.');
         }
-        // Debugging is handled here; stop the caller from invoking debugCpp,
-        // which reads launch.json and can run the application's build task.
+        // F6 uses this standalone launch configuration.
         return false;
     } catch (e) {
         await showBuildError(e);
@@ -753,8 +754,7 @@ async function buildKernel(editor, source) {
         if (!started) {
             vscode.window.showErrorMessage('mem: Could not start the kernel debugger.');
         }
-        // Debugging is handled here; stop the caller from invoking debugCpp,
-        // which reads launch.json and can run the application's build task.
+        // F6 uses this standalone launch configuration.
         return false;
     } catch (e) {
         await showBuildError(e);
@@ -842,60 +842,11 @@ async function buildKernelMain(editor, source) {
         if (!started) {
             vscode.window.showErrorMessage('mem: Could not start the kernel debugger.');
         }
-        // Debugging is handled here; stop the caller from invoking debugCpp,
-        // which reads launch.json and can run the application's build task.
+        // F6 uses this standalone launch configuration.
         return false;
     } catch (e) {
         await showBuildError(e);
         return false;
-    }
-}
-
-async function debugCpp(editor, debuggerType = 'cppdbg') {
-    try {
-        const programName = path.basename(editor.document.uri.fsPath).split('.')[0];
-        if (!programName) {
-            vscode.window.showErrorMessage('mem: The filename must contain a program name before the first dot.');
-            return;
-        }
-        const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-        if (!folder) {
-            vscode.window.showErrorMessage('mem: Open the project folder before debugging C++.');
-            return;
-        }
-        const configurations = vscode.workspace
-            .getConfiguration('launch', folder.uri)
-            .get('configurations', []);
-        const configuration = configurations.find(config =>
-            config.type === debuggerType && config.request === 'launch'
-        );
-        const defaultConfiguration = {
-            type: debuggerType,
-            request: 'launch',
-            cwd: folder.uri.fsPath,
-            ...(debuggerType === 'cppdbg' ? {
-                MIMode: 'gdb',
-                miDebuggerPath: process.env.GDB || 'gdb',
-                externalConsole: false
-            } : {
-                debuggerPath: process.env.CUDA_GDB || '/usr/local/cuda/bin/cuda-gdb'
-            })
-        };
-        if (!await vscode.workspace.saveAll()) return;
-        const started = await vscode.debug.startDebugging(folder, {
-            ...defaultConfiguration,
-            ...configuration,
-            name: `${debuggerType === 'cuda-gdb' ? 'CUDA' : 'C++'}: Debug ${programName}`,
-            program: appExecutable(editor),
-            internalConsoleOptions: 'openOnSessionStart',
-            stopAtEntry: false
-        });
-        if (!started) {
-            vscode.window.showErrorMessage('mem: Could not start the C++ debugger.');
-        }
-    } catch (e) {
-        log('Error debugCpp', e.message);
-        vscode.window.showErrorMessage(`mem: ${e.message}`);
     }
 }
 
@@ -1149,33 +1100,39 @@ async function cmdDebug() {
         }
         else{
             LOG && log("buildCpp debugCpp", filename)
-            if (!await buildCpp(editor, filename)) return;
-            await debugCpp(editor);
+            await buildCpp(editor, filename);
             return;
         }
         return;
     }
 
+    if (testfile) {
+        if (!await vscode.workspace.saveAll()) return;
+        const source = path.resolve(testfile);
+        const prepared = await prepareCpp(source, appBuildDirectory(editor));
+        if (prepared.source !== source) {
+            await buildCpp(editor, testfile, prepared);
+            return;
+        }
+    }
+
     if(await isShaderFile(sourcefile)){
         LOG && log("isShaderFile", sourcefile,  "buildShader", testfile)
-        if (!await buildShader(editor, testfile)) return;
-        await debugCpp(editor);
+        await buildShader(editor, testfile);
     }
     else if(await isKernelFile(sourcefile)){
         if (!await vscode.workspace.saveAll()) return;
         if (isExistMain(sourcefile)) {
             LOG && log("isKernelFile", sourcefile, "buildKernelMain", sourcefile)
-            if (!await buildKernelMain(editor, sourcefile)) return;
+            await buildKernelMain(editor, sourcefile);
         } else {
             LOG && log("isKernelFile", sourcefile, "buildKernel", testfile)
-            if (!await buildKernel(editor, testfile)) return;
+            await buildKernel(editor, testfile);
         }
-        await debugCpp(editor);
     }
     else{
         LOG && log("buildCpp buildCpp", testfile)
-        if (!await buildCpp(editor, testfile)) return;
-        await debugCpp(editor);
+        await buildCpp(editor, testfile);
     }
 }
 
@@ -1283,6 +1240,8 @@ async function activate(context) {
             await cmdDebug();
         } catch (error) {
             console.error('mem: Error running cmdDebug', error);
+            log('Error running cmdDebug', error.message || error);
+            vscode.window.showErrorMessage(`mem: ${error.message || error}`);
         }
     });
 
@@ -1315,15 +1274,7 @@ async function activate(context) {
 
     context.subscriptions.push(memCmd, debugCmd, stopCmd, toggleBreakpointCmd, stepOverCmd, toggleBreakpointCmd);
 
-    // Finish activation before updating configuration files in the background.
-    const settingsTask = setImmediate(async () => {
-        try {
-            await vscodeSettings();
-        } catch (error) {
-            console.error('mem: Error updating VS Code configuration', error);
-        }
-    });
-    context.subscriptions.push({ dispose: () => clearImmediate(settingsTask) });
+
 }
 
 function deactivate() {}

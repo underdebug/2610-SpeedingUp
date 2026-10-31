@@ -1,0 +1,91 @@
+{
+  "name": "mem",
+  "displayName": "mem",
+  "description": "Join the selection lines with commas and run -exec python in the debug console.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "debug",
+        "title": "debug"
+      },
+      {
+        "command": "mem",
+        "title": "mem"
+      },
+      {
+        "command": "stop",
+        "title": "stop"
+      },
+      {
+        "command": "toggleBreakpoint",
+        "title": "toggleBreakpoint"
+      },
+      {
+        "command": "stepOver",
+        "title": "stepOver"
+      }
+    ],
+    "keybindings": [
+      {
+        "key": "ctrl+f2",
+        "command": "bookmarks.toggle",
+        "when": "editorTextFocus"
+      },
+      {
+        "key": "f2",
+        "command": "bookmarks.jumpToNext",
+        "when": "editorTextFocus"
+      },
+      {
+        "key": "shift+f2",
+        "command": "bookmarks.jumpToPrevious",
+        "when": "editorTextFocus"
+      },
+      {
+        "key": "ctrl+shift+f2",
+        "command": "bookmarks.clear"
+      },
+      {
+        "key": "alt+left",
+        "command": "workbench.action.navigateBack"
+      },
+      {
+        "key": "alt+right",
+        "command": "workbench.action.navigateForward"
+      },
+      {
+        "key": "f6",
+        "command": "debug",
+        "when": "(filesExplorerFocus || editorTextFocus) && !inDebugMode"
+      },
+      {
+        "key": "shift+f6",
+        "command": "workbench.action.debug.stop",
+        "when": "inDebugMode"
+      },
+      {
+        "key": "f8",
+        "command": "mem",
+        "when": "editorTextFocus && (inDebugMode || editorLangId == python)"
+      },
+      {
+        "key": "f9",
+        "command": "toggleBreakpoint"
+      },
+      {
+        "key": "f10",
+        "command": "stepOver",
+        "when": "debugState == stopped"
+      }
+    ]
+  }
+}

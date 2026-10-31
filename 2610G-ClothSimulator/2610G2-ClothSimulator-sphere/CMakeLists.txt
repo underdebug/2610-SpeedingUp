@@ -24,6 +24,7 @@ target_compile_options(ClothSimulator PRIVATE
 # Uncomment the files you want to debug; paths are relative to this directory.
 # MINGJIE
 set(CUDA_DEVICE_DEBUG_SOURCES
+    src/Mesh.cu
     src/RemeshingHelper.cu
     src/PhysicsHelper.cu
     src/CollisionHelper.cu
