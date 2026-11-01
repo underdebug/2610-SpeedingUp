@@ -177,13 +177,18 @@ Matrix2x2f faceSizing(const Face* face, const Plane* planes, const Remeshing* re
     
     Sw1 = face->curvature();
     M[0] = (Sw1.transpose() * Sw1) / sqr(remeshing->refineAngle);
+
     Matrix3x2f Sw2 = face->derivative(node0->n, node1->n, node2->n);
     M[1] = (Sw2.transpose() * Sw2) / sqr(remeshing->refineAngle);
+    
     Matrix3x2f V = face->derivative(node0->v, node1->v, node2->v);
     M[2] = (V.transpose() * V) / sqr(remeshing->refineVelocity);
+
     Matrix3x2f F = face->derivative(node0->x, node1->x, node2->x);
     M[3] = compressionMetric(F.transpose() * F - Matrix2x2f(1.0f), Sw2.transpose() * Sw2, remeshing);
+
     M[4] = obstacleMetric(face, planes);
+    
     Matrix2x2f S = maxTensor(M);
 
     Matrix2x2f Q;
