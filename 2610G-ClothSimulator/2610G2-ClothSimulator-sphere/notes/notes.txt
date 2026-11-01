@@ -1,6 +1,6 @@
 
 https://jamesobrien.com/resources/ARCSim/index.html
 
-https://github.com/zhou13/arcsi
+https://github.com/zhou13/arcsim
 
 https://objf.ai/papers/Narain-AAR-2012-11/
