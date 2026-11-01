@@ -25,6 +25,8 @@ target_compile_options(ClothSimulator PRIVATE
 # MINGJIE
 set(CUDA_DEVICE_DEBUG_SOURCES
     src/Mesh.cu
+    src/Face.cu
+    src/Edge.cu
     src/RemeshingHelper.cu
     src/PhysicsHelper.cu
     src/CollisionHelper.cu

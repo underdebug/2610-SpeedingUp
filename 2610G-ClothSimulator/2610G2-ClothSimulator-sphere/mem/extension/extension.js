@@ -50,9 +50,30 @@ async function printStack(session) {
         LOG && log('printStack', line);
         const item = vscode.debug.activeStackItem;
         let threadId = item && item.session === session ? item.threadId : undefined;
-        // CUDA-GDB owns a separate device focus. Asking for the first host
-        // thread's stack can replace that focus before evaluating GPU locals.
-        if (session.type === 'cuda-gdb') return;
+        // Read CUDA-GDB's current stack without selecting a DAP host thread
+        // or frame, which would replace the device focus before reading locals.
+        if (session.type === 'cuda-gdb') {
+            const script = [
+                'import gdb',
+                'frame = gdb.newest_frame()',
+                'names = []',
+                'for index in range(4):',
+                '    if frame is None:',
+                '        break',
+                "    names.append((frame.name() or '??').split('(', 1)[0].strip())",
+                '    if index < 3:',
+                '        frame = frame.older()',
+                `print(${line}, ' <-- '.join(names) or '(no stack)')`
+            ].join('\n');
+            const response = await session.customRequest('evaluate', {
+                expression: `-exec python exec(${JSON.stringify(script)}, {})`,
+                context: 'repl'
+            });
+            if (response && response.result) {
+                vscode.debug.activeDebugConsole.appendLine(response.result);
+            }
+            return;
+        }
         if (threadId === undefined) {
             const response = await session.customRequest('threads');
             threadId = response.threads && response.threads[0] && response.threads[0].id;
@@ -889,8 +910,8 @@ async function cmdMem() {
     if (!isPythonProgram) { // C++ program
         if (!isPythonFile) { // C++ program, C++ file
             LOG && log('memCppCpp(session) C++ program, C++ file')
-            await printStack(session);
             await initialMem(session);
+            await printStack(session);
 
             if (editor.selection.isEmpty) {
                 const commandText = editor.document.lineAt(editor.selection.active.line).text;
@@ -901,8 +922,8 @@ async function cmdMem() {
 
         } else { // C++ program, Python file
             LOG && log('memCppPython(session) C++ program, Python file')
-            await printStack(session);
             await initialMem(session);
+            await printStack(session);
             await memCppPython(session);
         }
         
@@ -1241,6 +1262,18 @@ async function activate(context) {
         } catch (error) {
             console.error('mem: Error running cmdDebug', error);
             log('Error running cmdDebug', error.message || error);
+            vscode.window.showErrorMessage(`mem: ${error.message || error}`);
+        }
+    });
+
+    // Keep the stop shortcuts bound even after the session has ended so that
+    // repeated presses cannot resolve to another debug command.
+    const stopCmd = vscode.commands.registerCommand('stop', async () => {
+        const session = vscode.debug.activeDebugSession;
+        if (!session) return;
+        try {
+            await vscode.debug.stopDebugging(session);
+        } catch (error) {
             vscode.window.showErrorMessage(`mem: ${error.message || error}`);
         }
     });

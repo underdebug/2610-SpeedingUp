@@ -5,7 +5,6 @@
 #include <device_launch_parameters.h>
 
 #include "MathHelper.cuh"
-#include "CudaHelper.cuh"
 #include "NearPoint.cuh"
 #include "Pair.cuh"
 #include "Vector.cuh"

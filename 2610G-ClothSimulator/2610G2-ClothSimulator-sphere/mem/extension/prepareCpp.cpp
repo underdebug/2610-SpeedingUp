@@ -84,9 +84,13 @@ async function prepareCpp(source, buildDirectory) {
             + `#line ${text.slice(0, offset + line.length).split('\n').length} ${JSON.stringify(source)}\n`;
     });
     if (!explicit) {
-        const main = /\bint\s+main\s*\(/.exec(mask(text));
+        const clean = mask(text);
+        const main = /\bint\s+main\s*\(/.exec(clean);
         if (!main) throw new Error('Automatic method tests require int main()');
-        const insertion = text.lastIndexOf('\n', main.index) + 1;
+        // Helpers can use the generated class before main(). Insert before the
+        // first function definition, keeping the test's type headers in front.
+        const firstFunction = /^[ \t]*[^#;{}\n]+?\b\w+\s*\([^;{}]*\)\s*(?:const\s*)?(?:noexcept\s*)?\{/m.exec(clean);
+        const insertion = text.lastIndexOf('\n', firstFunction ? firstFunction.index : main.index) + 1;
         const definitions = groups.map(group =>
             renderMethods(group.filename, group.className, group.names, true)).join('\n');
         generated = text.slice(0, insertion) + definitions

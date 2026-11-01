@@ -116,8 +116,12 @@ Matrix2x2f Face::curvature() const {
         Vector2f e = vertices[(i + 1) % 3]->u - vertices[i]->u;
         Vector2f t = Vector2f(-e(1), e(0)).normalized();
         float angle = edges[i]->angle();
+        // -exec break fabs(angle) > 15 * 3.14159265358979323846f / 180.0f
+        
         ans -= 0.5f * angle * e.norm() * t.outer(t);
     }
+    
+    // -exec source Face.cu_.py curvature QtAgg
     return ans / area;
 }
 

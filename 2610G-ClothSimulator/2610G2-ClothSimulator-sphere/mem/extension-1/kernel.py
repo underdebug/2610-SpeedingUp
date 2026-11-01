@@ -69,6 +69,9 @@ inline cudaError_t cudaGetLastError() { return cudaSuccess; }
 inline const char* cudaGetErrorString(cudaError_t e) { return e ? "CPU allocation failed" : "success"; }
 template<class T> T atomicAdd(T* p, T value) { T old = *p; *p += value; return old; }
 template<class T> T atomicSub(T* p, T value) { T old = *p; *p -= value; return old; }
+template<class T> T atomicMin(T* p, T value) {
+    T old = *p; if (value < *p) *p = value; return old;
+}
 inline void __syncthreads() { throw std::runtime_error("CPU replay does not support thread barriers"); }
 inline thread_local dim3 gridDim;
 template<class F> void mem_cpu_launch(dim3 grid, dim3 block, F function) {
@@ -219,8 +222,12 @@ def build(source, executable):
     program = translation.program()
     executable = executable.resolve()
     executable.parent.mkdir(parents=True, exist_ok=True)
+    dependency_flags = []
+    if re.search(r'#\s*include\s*[<"]json/json\.h[>"]', program):
+        dependency_flags = shlex.split(subprocess.check_output(
+            ['pkg-config', '--cflags', '--libs', 'jsoncpp'], text=True))
     command = [*shlex.split(os.environ.get('CXX', 'g++')), '-std=c++17', '-O0', '-g3',
-               '-x', 'c++', '-', '-o', str(executable)]
+               '-x', 'c++', '-', '-o', str(executable), *dependency_flags]
     return subprocess.run(command, input=program, encoding='utf-8').returncode
 
 

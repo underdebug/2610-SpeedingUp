@@ -32,14 +32,15 @@ import math
 import re
 
 np.set_printoptions(suppress=True)  # FORMAT LONG G *
-np.set_printoptions(linewidth=150) # MAX WIDTH NODELETE
+np.set_printoptions(linewidth=150)  # MAX WIDTH NODELETE
 np.set_printoptions(threshold=1000) # MAX NUMBER NODELETE
 np.set_printoptions(edgeitems=10)   # FIRST LAST NUMBER NODELETE *
 np.set_printoptions(formatter={
     'float_kind': lambda x: f'{x:8.3f}',
     'int_kind': lambda x: f'{x:3d}',
 })
-def printf(*args, **kwargs): print(*args, **kwargs)
+def printf(*args, **kwargs):
+    print(*(shrink(data) for data in args), **kwargs)
 
 PROJECT_ROOT = os.environ.get('PROJECT_ROOT')
 if PROJECT_ROOT:              PATH = os.path.join(os.path.abspath(PROJECT_ROOT), 'mem')
@@ -915,6 +916,12 @@ def is_device_pointer(Name):
         if LOG: PRINT('is_device_pointer success:', 'mem kernel kernel 2')
         return 2
 
+def shrink(data):
+    """Unwrap single-entry dictionaries, preserving the underlying value."""
+    while isinstance(data, dict) and len(data) == 1:
+        data = next(iter(data.values()))
+    return data
+
 def mem_(Name, Type=None, Size=None, Step=1):
     if isinstance(Type, str) and Type == '':
         Type = None
@@ -948,15 +955,17 @@ def mem_(Name, Type=None, Size=None, Step=1):
     if LOG: PRINT('Name', Name, 'is device', is_device)
 
     if is_device == 0:
-        return cpu(Name, Type, Size)
+        data = cpu(Name, Type, Size)
 
     elif is_device == 1:
-        return gpu(Name, Type, Size)
+        data = gpu(Name, Type, Size)
 
     elif is_device == 2:
-        return kernel(Name, Type, Size, Step)
+        data = kernel(Name, Type, Size, Step)
+
+    else: return None
   
-    return None
+    return shrink(data)
 
 def aware(console = 0):
     try:

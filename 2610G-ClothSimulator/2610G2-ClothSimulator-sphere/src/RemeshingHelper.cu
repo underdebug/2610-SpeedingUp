@@ -1,5 +1,7 @@
 #include "RemeshingHelper.cuh"
 
+#include <cstdio>
+
 __global__ void setX(int nNodes, const Node* const* nodes, Vector3f* x) {
     int nThreads = gridDim.x * blockDim.x;
 
@@ -157,12 +159,23 @@ Matrix2x2f maxTensor(const Matrix2x2f* M) {
 }
 
 Matrix2x2f faceSizing(const Face* face, const Plane* planes, const Remeshing* remeshing) {
+    // -exec source RemeshingHelper.cu_.py faceSizingInput
     Node* node0 = face->vertices[0]->node;
     Node* node1 = face->vertices[1]->node;
     Node* node2 = face->vertices[2]->node;
     Matrix2x2f M[5];
 
     Matrix2x2f Sw1 = face->curvature();
+
+#ifdef __CUDA_ARCH__
+    static __device__ int callCount = 0;
+    const int count = atomicAdd(&callCount, 1) + 1;
+    const float determinant = fabsf(Sw1(0, 0) * Sw1(1, 1) - Sw1(0, 1) * Sw1(1, 0));
+#endif
+
+    // -exec break if count > 100 && determinant > 0.1f
+    
+    Sw1 = face->curvature();
     M[0] = (Sw1.transpose() * Sw1) / sqr(remeshing->refineAngle);
     Matrix3x2f Sw2 = face->derivative(node0->n, node1->n, node2->n);
     M[1] = (Sw2.transpose() * Sw2) / sqr(remeshing->refineAngle);
@@ -183,7 +196,11 @@ Matrix2x2f faceSizing(const Face* face, const Plane* planes, const Remeshing* re
     for (int i = 0; i < 2; i++)
         l(i) = max(l(i), lMin);
     // Triangle density scales with the sizing metric; 0.25 doubles edge lengths.
-    return (Q * diagonal(l) * Q.transpose()) * remeshing->triangleDensity;
+    Matrix2x2f matrix = (Q * diagonal(l) * Q.transpose()) * remeshing->triangleDensity;
+
+    // Pause on return to inspect all metrics and the final sizing matrix.
+    // -exec source RemeshingHelper.cu_.py faceSizing QtAgg
+    return matrix;
 }
 
 __global__ void initializeSizing(int nVertices, Vertex** vertices) {

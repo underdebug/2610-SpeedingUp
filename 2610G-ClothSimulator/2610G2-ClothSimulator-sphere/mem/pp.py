@@ -1,7 +1,14 @@
+import numpy as np
 
+x = np.array([-0.5, 0.0, 0.5], dtype=np.float32)
 
-def printf(*args, **kwargs):
-    print(*args, **kwargs)
+print(type(x))
+# <class 'numpy.ndarray'>
 
-A = [1, 2, 3]
-printf(A, '<-', 12)
+print(x.dtype)
+# float32
+
+print(x.shape)
+# (3,)
+
+print(x)

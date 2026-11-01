@@ -68,9 +68,12 @@
         "when": "(filesExplorerFocus || editorTextFocus) && !inDebugMode"
       },
       {
+        "key": "shift+f5",
+        "command": "stop"
+      },
+      {
         "key": "shift+f6",
-        "command": "workbench.action.debug.stop",
-        "when": "inDebugMode"
+        "command": "stop"
       },
       {
         "key": "f8",
@@ -85,6 +88,11 @@
         "key": "f10",
         "command": "stepOver",
         "when": "debugState == stopped"
+      },
+      {
+        "key": "ctrl+shift+n",
+        "command": "cmake.build",
+        "when": "cmake:enableFullFeatureSet"
       }
     ]
   }
