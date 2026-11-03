@@ -155,6 +155,8 @@ Matrix2x2f maxTensor(const Matrix2x2f* M) {
     ans(0, 0) = disk.r + disk.o(0);
     ans(0, 1) = ans(1, 0) = disk.o(1);
     ans(1, 1) = disk.r - disk.o(0);
+
+    // -exec source RemeshingHelper.cu_.py maxTensor Agg
     return ans;
 }
 
@@ -165,8 +167,6 @@ Matrix2x2f faceSizing(const Face* face, const Plane* planes, const Remeshing* re
     Node* node2 = face->vertices[2]->node;
     Matrix2x2f M[5];
 
-    Matrix2x2f Sw1 = face->curvature();
-
 #ifdef __CUDA_ARCH__
     static __device__ int callCount = 0;
     const int count = atomicAdd(&callCount, 1) + 1;
@@ -174,6 +174,8 @@ Matrix2x2f faceSizing(const Face* face, const Plane* planes, const Remeshing* re
 #endif
 
     // -exec break if count > 100 && determinant > 0.1f
+
+    Matrix2x2f Sw1 = face->curvature();
     
     Sw1 = face->curvature();
     M[0] = (Sw1.transpose() * Sw1) / sqr(remeshing->refineAngle);

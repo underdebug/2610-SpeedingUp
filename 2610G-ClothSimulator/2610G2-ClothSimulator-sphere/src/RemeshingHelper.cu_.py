@@ -73,6 +73,87 @@ def faceSizingInput(filename=None):
     return output
 
 
+def maxTensor(Agg="Agg"):
+    """Plot the C++ disks while paused on the return statement in maxTensor.
+
+    Run with: -exec source RemeshingHelper.cu_.py maxTensor Agg
+    Agg saves mem/figure/maxTensor.png; QtAgg also opens a window.
+    """
+    if Agg not in ("Agg", "QtAgg"):
+        raise ValueError("Display argument must be Agg or QtAgg")
+
+    def read(expression):
+        value = mem(expression)
+        if value is None:
+            raise ValueError(
+                f"Cannot read {expression}; pause on the return statement in maxTensor")
+        if isinstance(value, dict):
+            value = value["data"]
+        return np.asarray(value, dtype=float)
+
+    n = int(read("n").item())
+    if not 0 <= n <= 5:
+        raise ValueError(f"Invalid disk count {n}; pause on the return in maxTensor")
+    matrices = [read(f"M[{i}]").reshape(2, 2) for i in range(5)]
+    active = [i for i, matrix in enumerate(matrices) if np.trace(matrix) != 0]
+    if len(active) != n:
+        raise ValueError("Disk count does not match M; pause on the return in maxTensor")
+    # Read only initialized entries. d[] packs the nonzero-trace input matrices.
+    disks = [(read(f"d[{i}].o").reshape(2), read(f"d[{i}].r").item())
+             for i in range(n)]
+    center = read("disk.o").reshape(2)
+    radius = read("disk.r").item()
+    answer = read("ans").reshape(2, 2)
+
+    import matplotlib
+    matplotlib.use(Agg)
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Circle
+
+    fig = plt.figure("maxTensor", figsize=(13, 7))
+    fig.clear()
+    ax = fig.add_subplot(121)
+    panel = fig.add_subplot(122)
+    panel.axis("off")
+    lines = ["C++ maxTensor values", f"Active disks: {n} / 5", ""]
+
+    def draw_disk(origin, r, color, label, **style):
+        if not np.isfinite(origin).all() or not np.isfinite(r) or r < 0:
+            lines.append(f"{label}: invalid disk (not plotted)")
+            return
+        ax.add_patch(Circle(origin, r, fill=False, edgecolor=color,
+                            label=label, **style))
+        ax.plot(*origin, marker="+", color=color)
+
+    for j, (origin, r) in enumerate(disks):
+        draw_disk(origin, r, f"C{active[j]}", f"M[{active[j]}]", linewidth=1.5)
+    draw_disk(center, radius, "black", "Enclosing disk", linewidth=2, linestyle="--")
+    for i, matrix in enumerate(matrices):
+        status = "" if i in active else " (ignored: zero trace)"
+        lines.append(f"M[{i}]{status}:\n" + np.array2string(matrix, precision=5))
+    lines.extend(["", f"disk.o: {center}", f"disk.r: {radius:.6g}",
+                  "ans:\n" + np.array2string(answer, precision=5)])
+    ax.autoscale_view()
+    ax.margins(0.1)
+    ax.set_aspect("equal", adjustable="box")
+    ax.set(xlabel="(M00 - M11) / 2", ylabel="(M01 + M10) / 2",
+           title="maxTensor disks (radius = trace / 2)")
+    ax.grid(alpha=0.25)
+    if ax.get_legend_handles_labels()[0]:
+        ax.legend()
+    panel.text(0, 1, "\n".join(lines), va="top", family="monospace", fontsize=9)
+    fig.tight_layout()
+    output = Path(__file__).resolve().parent.parent / "mem/figure/maxTensor.png"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=150)
+    print(f"Saved maxTensor plot: {output}")
+    if Agg == "QtAgg":
+        plt.show(block=True)
+    else:
+        plt.close(fig)
+    return fig, ax
+
+
 def faceSizing(Agg="Agg"):
     """Plot the current faceSizing frame: faceSizing QtAgg opens a window."""
     if Agg not in ("Agg", "QtAgg"):
