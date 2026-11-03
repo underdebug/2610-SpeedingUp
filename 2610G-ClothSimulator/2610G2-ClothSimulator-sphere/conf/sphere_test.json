@@ -16,6 +16,7 @@
                 "data": "materials/gray-interlock.json",
                 "thicken": 2
             },
+
             "remeshing": {                   // MINGJIE
                 "refine_angle": 0.3,         // <- smaller: more refinement
                 "refine_compression": 0.005, // <- smaller: more refinement
@@ -26,6 +27,17 @@
                 ],
                 "aspect_min": 0.2            // -> larger: less elongated triangles; not a detail control
             }
+
+            // "remeshing": {                   // MINGJIE
+            //     "refine_angle": 0.15,        // <- smaller: more refinement
+            //     "refine_compression": 0.005, // <- smaller: more refinement
+            //     "refine_velocity": 0.5,      // <- smaller: more refinement
+            //     "size": [
+            //         0.05,                   // <- smaller: allows finer triangles
+            //         0.1                      // <- smaller: finer coarse regions
+            //     ],
+            //     "aspect_min": 0.2            // -> larger: less elongated triangles; not a detail control
+            // }
         }
     ],
     "handles": [

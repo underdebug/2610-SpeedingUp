@@ -4,3 +4,9 @@ https://jamesobrien.com/resources/ARCSim/index.html
 https://github.com/zhou13/arcsim
 
 https://objf.ai/papers/Narain-AAR-2012-11/
+
+https://graphics.eecs.berkeley.edu/resources/ARCSim/
+
+git clone --recursive https://github.com/vitalight/Velvet.git
+git clone --recursive https://github.com/Wajov/ClothSimulator.git
+git clone --recursive https://github.com/Afshari/CUDAClothXPBD.git

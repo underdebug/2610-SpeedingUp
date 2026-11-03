@@ -9,7 +9,7 @@
         "transform": {"rotate": [90, 1, 0, 0]},
         "materials": {"data": "materials/navy-sparkle-sweat.json", "bending_mult": 0.1},
         "remeshing": {
-            "triangle_density": 0.025, // 0.1 -> 0.025 NODELETE
+            "triangle_density": 0.1, // 0.1 -> 0.025 NODELETE
             "refine_angle": 0.3,
             "refine_compression": 0.01,
             "refine_velocity": 0.5,

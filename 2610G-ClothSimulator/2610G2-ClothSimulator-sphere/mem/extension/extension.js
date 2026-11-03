@@ -404,8 +404,8 @@ async function memCppCpp(session) {
         if(!await runExec(text)){  // -EXEC NODELETE         
             text = tokenText();
             if (text){ // TOKEN NODELETE
-                const expression = `value = mem(${JSON.stringify(text)}); printf(value, ${JSON.stringify('<= ' + text)}, list(value.shape) if hasattr(value, 'shape') and value.shape else '', '|${line}|')`;
-                const expr = `-exec python exec(${JSON.stringify(expression)})`.replace(/ {2,}/g, ' ');
+                const expression = `value = mem('${text}'); printf(value, '${text}', ${line})`;
+                const expr = `-exec python exec(${JSON.stringify(expression)})`;
                 const response = await session.customRequest('evaluate', {
                     expression: expr,
                     context: 'repl',
@@ -421,7 +421,7 @@ async function memCppCpp(session) {
         const isParameter = /^\S+$/.test(text.trim());
         
         if(isParameter){
-            const expression = `value = mem(${JSON.stringify(text)})\nprintf(value, ${JSON.stringify('<= ' + text)}, list(value.shape) if hasattr(value, 'shape') and value.shape else '', '|${line}|')`;
+            const expression = `value = mem('${text}'); printf(value, '${text}', ${line})`;
             const expr = `-exec python exec(${JSON.stringify(expression)})`;
             const response = await session.customRequest('evaluate', {
                 expression: expr,

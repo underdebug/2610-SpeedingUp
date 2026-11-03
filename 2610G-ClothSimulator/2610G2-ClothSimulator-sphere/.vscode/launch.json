@@ -9,6 +9,12 @@
             "args": [
                 "simulate",
                 "conf/sphere_test.json",
+                //"conf/sphere_fixed_mesh.json",
+                //"conf/dress-blue-simple.json",
+                //"conf/hang.json",
+                //"conf/sleeve.json",
+                //"conf/karate.json",
+                //"conf/flag.json",
                 "--gpu"
             ],
             "cwd": "${workspaceFolder}",
