@@ -26,7 +26,7 @@ const vscode = require('vscode');
 const { registerShaderDefinitions } = require('./definitions');
 const path = require('path');
 const fs = require('fs');
-const { prepareCpp } = require('./prepareCpp.cpp');
+const { prepare } = require('./prepare.js');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
@@ -662,7 +662,7 @@ async function buildCpp(editor, source = editor.document.uri.fsPath, preparedSou
         const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
         const root = folder ? folder.uri.fsPath : path.dirname(filename);
         await fs.promises.mkdir(appBuildDirectory(editor), { recursive: true });
-        const prepared = preparedSource || await prepareCpp(path.resolve(source), appBuildDirectory(editor));
+        const prepared = preparedSource || await prepare(path.resolve(source), appBuildDirectory(editor));
         const { stdout, stderr } = await execFileAsync(
             process.env.CXX || 'g++',
             ['-std=c++17', '-O0', '-ggdb3', '-fno-eliminate-unused-debug-types',
@@ -1130,7 +1130,7 @@ async function cmdDebug() {
     if (testfile) {
         if (!await vscode.workspace.saveAll()) return;
         const source = path.resolve(testfile);
-        const prepared = await prepareCpp(source, appBuildDirectory(editor));
+        const prepared = await prepare(source, appBuildDirectory(editor));
         if (prepared.source !== source) {
             await buildCpp(editor, testfile, prepared);
             return;

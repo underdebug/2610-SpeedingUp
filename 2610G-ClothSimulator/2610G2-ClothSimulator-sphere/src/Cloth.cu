@@ -291,6 +291,7 @@ thrust::device_vector<Edge*> Cloth::findEdgesToFlipGpu() const {
     checkEdgesToFlip<<<GRID_SIZE, BLOCK_SIZE>>>(nEdges, pointer(edges), remeshing, edgesToFlipPointer);
     CUDA_CHECK_LAST();
 
+    // -exec break if !edgesToFlip.empty() && edgesToFlip.size() < nEdges
     edgesToFlip.erase(thrust::remove(edgesToFlip.begin(), edgesToFlip.end(), nullptr), edgesToFlip.end());
     int nEdgesToFlip = edgesToFlip.size();
     thrust::device_vector<Edge*> ans(nEdgesToFlip, nullptr);
@@ -342,7 +343,8 @@ bool Cloth::flipSomeEdges(MemoryPool* pool) {
     return true;
 }
 
-void Cloth::flipEdges(MemoryPool* pool) {
+void Cloth::
+flipEdges(MemoryPool* pool) {
     int nEdges = !gpu ? mesh->getEdges().size() : mesh->getEdgesGpu().size();
     for (int i = 0; i < 2 * nEdges; i++)
         if (!flipSomeEdges(pool))

@@ -82,28 +82,19 @@ def maxTensor(Agg="Agg"):
     if Agg not in ("Agg", "QtAgg"):
         raise ValueError("Display argument must be Agg or QtAgg")
 
-    def read(expression):
-        value = mem(expression)
-        if value is None:
-            raise ValueError(
-                f"Cannot read {expression}; pause on the return statement in maxTensor")
-        if isinstance(value, dict):
-            value = value["data"]
-        return np.asarray(value, dtype=float)
-
-    n = int(read("n").item())
+    n = int(mem("n").item())
     if not 0 <= n <= 5:
         raise ValueError(f"Invalid disk count {n}; pause on the return in maxTensor")
-    matrices = [read(f"M[{i}]").reshape(2, 2) for i in range(5)]
+    matrices = [mem(f"M[{i}]").reshape(2, 2) for i in range(5)]
     active = [i for i, matrix in enumerate(matrices) if np.trace(matrix) != 0]
     if len(active) != n:
         raise ValueError("Disk count does not match M; pause on the return in maxTensor")
     # Read only initialized entries. d[] packs the nonzero-trace input matrices.
-    disks = [(read(f"d[{i}].o").reshape(2), read(f"d[{i}].r").item())
+    disks = [(mem(f"d[{i}].o").reshape(2), mem(f"d[{i}].r").item())
              for i in range(n)]
-    center = read("disk.o").reshape(2)
-    radius = read("disk.r").item()
-    answer = read("ans").reshape(2, 2)
+    center = mem("disk.o", "", 2)
+    radius = mem("disk.r", "", 1)
+    answer = mem("ans", "", 2)
 
     import matplotlib
     matplotlib.use(Agg)
