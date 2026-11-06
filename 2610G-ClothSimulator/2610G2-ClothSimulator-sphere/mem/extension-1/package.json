@@ -90,7 +90,7 @@
         "when": "debugState == stopped"
       },
       {
-        "key": "ctrl+shift+n",
+        "key": "ctrl+alt+b",
         "command": "cmake.build",
         "when": "cmake:enableFullFeatureSet"
       }

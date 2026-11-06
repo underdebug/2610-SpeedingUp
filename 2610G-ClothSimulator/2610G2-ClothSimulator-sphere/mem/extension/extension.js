@@ -20,25 +20,93 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-LOG = 0; // 10/29 2026
+LOG = 1; // 10/29 2026
 
 const vscode = require('vscode');
 const { registerShaderDefinitions } = require('./definitions');
 const path = require('path');
 const fs = require('fs');
 const { prepare } = require('./prepare.js');
+const { prepareGpu } = require('./prepareGpu.js');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
 
+// function log(...args) {
+//     const stack = new Error().stack;
+//     const m = stack.split('\n')[2]?.match(/:(\d+):\d+\)?$/);
+//     const line = m ? m[1] : '';
+
+//     vscode.debug.activeDebugConsole.appendLine(
+//         `>${line} ${args.join(' ')}`
+//     );
+// }
+
+function printTerminal(message) {
+    if (!log.terminal) {
+        const emitter = new vscode.EventEmitter();
+        const pending = [];
+        let opened = false;
+
+        log.writeTerminal = text => {
+            if (opened) emitter.fire(text);
+            else pending.push(text);
+        };
+
+        log.terminal = vscode.window.createTerminal({
+            name: 'mem',
+            pty: {
+                onDidWrite: emitter.event,
+                open() {
+                    opened = true;
+                    for (const text of pending) emitter.fire(text);
+                    pending.length = 0;
+                },
+                close() {
+                    opened = false;
+                    log.terminal = undefined;
+                    emitter.dispose();
+                }
+            }
+        });
+    }
+
+    log.terminal.show(true);
+    log.writeTerminal(message.replace(/\r?\n/g, '\r\n') + '\r\n');
+}
+
+async function printOutput(message) {
+    const config = vscode.workspace.getConfiguration('editor', {
+        languageId: 'Log'
+    });
+
+    await config.update('fontSize', 15, vscode.ConfigurationTarget.Global, true);
+    await config.update('lineHeight', 20, vscode.ConfigurationTarget.Global, true);
+
+    if (!log.outputChannel) {
+        log.outputChannel = vscode.window.createOutputChannel('mem');
+    }
+    log.outputChannel.appendLine(message);
+    log.outputChannel.show(true);
+}
+
 function log(...args) {
     const stack = new Error().stack;
-    const m = stack.split('\n')[2]?.match(/:(\d+):\d+\)?$/);
+    const caller = stack.split('\n')[2];
+
+    const m = caller?.match(/:(\d+):\d+\)?$/);
     const line = m ? m[1] : '';
 
-    vscode.debug.activeDebugConsole.appendLine(
-        `>${line} ${args.join(' ')}`
-    );
+    const fn = caller?.match(/^\s*at\s+(.+?)\s+\(/);
+    const name = fn ? fn[1] : '<anonymous>';
+
+    const message = `${String(line).padStart(3)} ${name.padEnd(13)} ${args.join(' ')}`;
+    if (vscode.debug.activeDebugSession) {
+        vscode.debug.activeDebugConsole.appendLine(message);
+    }
+
+    printTerminal(message);
+    printOutput(message);
 }
 
 async function printStack(session) {
@@ -70,7 +138,7 @@ async function printStack(session) {
                 context: 'repl'
             });
             if (response && response.result) {
-                vscode.debug.activeDebugConsole.appendLine(response.result);
+                log(response.result);
             }
             return;
         }
@@ -121,24 +189,32 @@ async function getFrameId(session) {
     }
 }
 
-async function openingProject(context) {
-    let openingProject = false;
-    const openProject = async (editor) => {
-        if (openingProject) return false;
-        openingProject = true;
-        try {
-            return await openProjectFromEditor(editor);
-        } catch (e) {
-            log('Error opening project folder', e.message);
-            return false;
-        } finally {
-            openingProject = false;
-        }
-    };
-    context.subscriptions.push(
-        vscode.window.onDidChangeActiveTextEditor(openProject)
-    );
-    return await openProject(vscode.window.activeTextEditor);
+async function getProjectPath() {
+    const foldeworkspaceFolders = vscode.workspace.workspaceFolders;
+    if (foldeworkspaceFolders && foldeworkspaceFolders[0]) { 
+        return foldeworkspaceFolders[0].uri.fsPath;
+    }
+
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+    return workspaceFolder;
+}
+
+async function getFilePath() {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor){ return undefined;}
+
+    return path.dirname(editor.document.uri.fsPath);
+}
+
+async function getExtensionPath() {
+    const foldeworkspaceFolders = vscode.workspace.workspaceFolders;
+    if (foldeworkspaceFolders && foldeworkspaceFolders[0]) { 
+        const workspaceFolder = foldeworkspaceFolders[0].uri.fsPath;
+        const extensionFolder = path.join(workspaceFolder, 'mem', 'extension');
+        return extensionFolder;
+    }
+    const extensionFolder = JSON.stringify(__dirname.replace(/\\/g, '/'));
+    return extensionFolder;
 }
 
 async function initialMem(session) {
@@ -146,25 +222,10 @@ async function initialMem(session) {
     const frameId = await getFrameId(session);
     LOG && log('initialMem', 'getFrameId', frameId);
 
-    const workspaceFolders = vscode.workspace.workspaceFolders || [];
-    const folder = editor ? vscode.workspace.getWorkspaceFolder(editor.document.uri) : undefined;
+    const PROJECT_PATH = await getProjectPath();
+    const EXTENSION_PATH = await getExtensionPath();
 
-    const rootFolder = [session.workspaceFolder, folder, ...workspaceFolders]
-        .filter(Boolean)
-        .find(workspaceFolder => {
-            const settingsPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
-            return fs.existsSync(settingsPath) && fs.statSync(settingsPath).isDirectory();
-        });
-
-    const PROJECT_ROOT = (rootFolder || session.workspaceFolder || folder)?.uri.fsPath;
-    if (!PROJECT_ROOT) {
-        throw new Error('Cannot determine PROJECT_ROOT: open a project workspace folder.');
-    }
-
-    const project_root = JSON.stringify(PROJECT_ROOT.replace(/\\/g, '/'));
-    const extension_path = JSON.stringify(__dirname.replace(/\\/g, '/'));
-
-    const expr = `-exec python import os, sys; PROJECT_ROOT=${project_root}; os.environ['PROJECT_ROOT']=PROJECT_ROOT; sys.path[:0]=[os.path.join(PROJECT_ROOT, 'mem/extension'), ${extension_path}]; import importlib, mem; importlib.reload(mem); from mem import *;`; // NOMODIFY, NODELETE
+    const expr = `-exec python import os, sys; PROJECT_PATH=${PROJECT_PATH}; os.environ['PROJECT_PATH']=PROJECT_PATH; sys.path[:0]=[os.path.join(PROJECT_PATH, 'mem/extension'), ${EXTENSION_PATH}]; import importlib, mem; importlib.reload(mem); from mem import *;`; // NOMODIFY, NODELETE
     LOG && log('initialMem', expr);
 
     try {
@@ -261,7 +322,7 @@ async function runExec_source(session, sourceText) {
     const currentPath = editor ? path.dirname(editor.document.uri.fsPath) : undefined;
     const folder = editor && vscode.workspace.getWorkspaceFolder(editor.document.uri);
     const projectPath = (session.workspaceFolder || folder)?.uri.fsPath
-        || process.env.PROJECT_ROOT || currentPath;
+        || process.env.PROJECT_PATH || currentPath;
     const relativePath = filename.replace(/^[/\\]+/, '');
     const candidates = [
         currentPath && path.resolve(currentPath, filename),
@@ -710,7 +771,7 @@ async function buildShader(editor, source) {
             'python3',
             [builder, source, '--output', appExecutable(editor)],
             { cwd: path.dirname(source), maxBuffer: 10 * 1024 * 1024,
-                env: { ...process.env, MEM_EXTENSION_PATH: __dirname, PROJECT_ROOT: root } }
+                env: { ...process.env, MEM_EXTENSION_PATH: __dirname, PROJECT_PATH: root } }
         );
         if (stdout) vscode.debug.activeDebugConsole.appendLine(stdout.trimEnd());
         if (stderr) vscode.debug.activeDebugConsole.appendLine(stderr.trimEnd());
@@ -755,7 +816,7 @@ async function buildKernel(editor, source) {
             'python3',
             [builder, source, '--output', appExecutable(editor)],
             { cwd: path.dirname(source), maxBuffer: 10 * 1024 * 1024,
-                env: { ...process.env, MEM_EXTENSION_PATH: __dirname, PROJECT_ROOT: root } }
+                env: { ...process.env, MEM_EXTENSION_PATH: __dirname, PROJECT_PATH: root } }
         );
         if (stdout) vscode.debug.activeDebugConsole.appendLine(stdout.trimEnd());
         if (stderr) vscode.debug.activeDebugConsole.appendLine(stderr.trimEnd());
@@ -839,7 +900,7 @@ async function buildKernelMain(editor, source) {
                 '-I', headerDirectory, '-include', path.join(headerDirectory, 'kernel.h'),
                 '-I', path.dirname(path.resolve(source)), '-', '-o', appExecutable(editor)],
             { cwd: path.dirname(source), maxBuffer: 10 * 1024 * 1024,
-                env: { ...process.env, MEM_EXTENSION_PATH: __dirname, PROJECT_ROOT: root } }
+                env: { ...process.env, MEM_EXTENSION_PATH: __dirname, PROJECT_PATH: root } }
         );
         // Feed only the transformed copy to the compiler; never rewrite source.
         compilation.child.stdin.on('error', () => {}); // Compiler failures are reported below.
@@ -1072,11 +1133,68 @@ async function createCppTest(sourcefile, testfile) {
     }  
 }
 
-function isExistMain(filename) {
-    return inspectDependencies(fs.readFileSync(filename, 'utf8')).definitions.has('main');
+async function createKernelGpuTest(sourcefile, testfile) {
+    const header = sourcefile.replace(/\.cu$/, '.cuh');
+    const includePath = path.relative(path.dirname(testfile),
+        fs.existsSync(header) ? header : sourcefile).replace(/\\/g, '/');
+    const wrapper = `#include <stdio.h>\n#include <cuda_runtime.h>\n#include "${includePath}"\n\nint main() {\n    printf("hello mingjie!");\n    return 0;\n}\n`;
+    try {
+        await fs.promises.writeFile(testfile, wrapper, { encoding: 'utf8', flag: 'wx' });
+    } catch (e) {
+        if (e.code !== 'EEXIST') {
+            log('Error creating kernel GPU test', e.message);
+            vscode.window.showErrorMessage(`mem: ${e.message}`);
+            return;
+        }
+    }  
 }
 
-async function cmdDebug() {
+async function buildKernel(editor, source) {
+    try {
+        if (!await vscode.workspace.saveAll()) return false;
+        const filename = editor.document.uri.fsPath;
+        source = source || (/\.(cpp|cc|cxx|c|h|hpp|hxx)$/i.test(filename)
+            ? filename : `${filename}_.cc`);
+        source = path.resolve(source);
+        const workspace = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+        const root = workspace ? workspace.uri.fsPath : path.dirname(source);
+        let builder = path.join(__dirname, 'kernel.py');
+        const localBuilder = path.join(root, 'mem', 'extension', 'kernel.py');
+        if (fs.existsSync(localBuilder)) builder = localBuilder;
+        await fs.promises.mkdir(appBuildDirectory(editor), { recursive: true });
+        const { stdout, stderr } = await execFileAsync(
+            'python3',
+            [builder, source, '--output', appExecutable(editor)],
+            { cwd: path.dirname(source), maxBuffer: 10 * 1024 * 1024,
+                env: { ...process.env, MEM_EXTENSION_PATH: __dirname, PROJECT_PATH: root } }
+        );
+        if (stdout) vscode.debug.activeDebugConsole.appendLine(stdout.trimEnd());
+        if (stderr) vscode.debug.activeDebugConsole.appendLine(stderr.trimEnd());
+        const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+        const started = await vscode.debug.startDebugging(folder, {
+            name: `Kernel: Debug ${path.basename(filename)}`,
+            type: 'cppdbg',
+            request: 'launch',
+            program: appExecutable(editor),
+            cwd: path.dirname(source),
+            MIMode: 'gdb',
+            miDebuggerPath: process.env.GDB || 'gdb',
+            externalConsole: false,
+            internalConsoleOptions: 'openOnSessionStart',
+            stopAtEntry: false
+        });
+        if (!started) {
+            vscode.window.showErrorMessage('mem: Could not start the kernel debugger.');
+        }
+        // F6 uses this standalone launch configuration.
+        return false;
+    } catch (e) {
+        await showBuildError(e);
+        return false;
+    }
+}
+
+async function cmdCppDbg() {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
         log('vscode.window.activeTextEditor; !editor return');
@@ -1154,6 +1272,180 @@ async function cmdDebug() {
     else{
         LOG && log("buildCpp buildCpp", testfile)
         await buildCpp(editor, testfile);
+    }
+}
+
+function isExistMain(filename) {
+    return inspectDependencies(fs.readFileSync(filename, 'utf8')).definitions.has('main');
+}
+
+async function debugCudaGdb(source) {
+    LOG && log('start debugCudaGdb', source);
+    if (!await vscode.workspace.saveAll()) return false;
+    LOG && log('vscode.workspace.saveAll()');
+
+    if (/\.cu$/i.test(source)) ({ source } = await prepareGpu(source));
+
+    const filePath = path.dirname(source); // file path
+    LOG && log('filePath', filePath);
+
+    const filename = path.basename(source); // filename
+    LOG && log('filename', filename);
+
+    const projectPath = await getProjectPath(); // project path
+    LOG && log('projectPath', projectPath);
+    
+    const extensionPath = await getExtensionPath(); // extension path  
+    LOG && log('extensionPath', extensionPath);
+
+    const builder = path.join(extensionPath, 'kernelGpu.py'); // builder
+    log('builder', builder);
+
+    const programName = path.basename(source).split('.')[0];
+    const buildPath = path.join(projectPath, 'build');
+    log('buildPath', buildPath);
+
+    await fs.promises.mkdir(buildPath, { recursive: true }); // makedir build
+    log('fs.promises.mkdir', buildPath);
+
+    const application = path.join(buildPath, programName); // application
+    log('application', application);
+
+    log('execFileAsync', 'builder', builder);
+    log('execFileAsync', 'source', source);
+
+    const { stdout, stderr } = await execFileAsync(
+        'python3',
+        [builder, source, '--output', application],
+        { cwd: filePath, maxBuffer: 10 * 1024 * 1024,
+          env: { ...process.env, EXTENSION_PATH: extensionPath, PROJECT_PATH: projectPath} }
+    );
+    if (stdout){
+        log("stdout", stdout.trimEnd());
+    }
+    if (stderr){
+        log("stderr", stderr.trimEnd());
+    }
+
+    log('vscode.debug.startDebugging', 'CUDA-GDB', filename);
+    const started = await vscode.debug.startDebugging(undefined, {
+        name: `CUDA-GDB ${filename}`,
+        type: 'cuda-gdb',
+        request: 'launch',
+        program: application,
+        cwd: filePath,
+        debuggerPath: process.env.CUDA_GDB || '/usr/local/cuda/bin/cuda-gdb',
+        internalConsoleOptions: 'openOnSessionStart',
+        stopAtEntry: true
+    });
+
+    if (!started) {
+        log('Could not start the CUDA-GDB debugger.');
+    }
+
+    log('vscode.debug.startDebugging', 'CUDA-GDB', started);
+    return started;
+}
+
+async function cmdCudaGdb() {
+    function isExistMain(filename) {
+        return inspectDependencies(
+            fs.readFileSync(filename, 'utf8')
+        ).definitions.has('main');
+    }
+    
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        log('vscode.window.activeTextEditor; !editor return');
+        return;
+    }
+    
+    const filename = editor.document.uri.fsPath;
+    LOG && log('filename', filename);
+
+    const filePath = path.dirname(filename);
+    LOG && log('filePath', filePath);
+
+    if(await isPythonFile(filename)){ // python file
+        LOG && log('debugPython', 'isPythonFile:true', filename)
+        await debugPython(editor);  
+    }
+    else if(await isShaderFile(filename)) { // shader file
+        const testfile =  `${filename}_.cc`;
+        if (!fs.existsSync(testfile)){
+            LOG && log("isShaderFile createShaderTest", filename, testfile);
+            await createShaderTest(filename, testfile);
+        }
+        else{
+            LOG && log("isShaderFile debugShader", filename, testfile);
+            await buildKernel(editor, testfile);
+        }
+    }
+    else if(await isCppFile(filename)) { // cpp file
+        // Part        Name                  Description
+        // /           Opening delimiter     Marks the beginning of the regular expression.
+        // \.          Escaped character     Matches a literal dot ".".
+        // (?:...)     Non-capturing group   Groups patterns without capturing them separately.
+        // cc|cu       Alternation (OR)      Matches either "cc" or "cu".
+        // $           End anchor            Matches at the end of the string.
+        // /           Closing delimiter     Marks the end of the regular expression.
+        // ''          Empty string          Removes the matched text.
+        // 
+        // Examples:  "kernel.cc"            "kernel"
+        //            "kernel.cu"            "kernel"
+        //            "kernel.cu_.cc"        "kernel.cu"
+        const sourcefile = filename.replace(/_\.(?:cc|cu)$/, '');
+        const testfile =  `${filename}_.cc`;
+
+        if(isExistMain(filename)){
+            LOG && log("isExistMain debugCudaGdb", filename);
+            await debugCudaGdb(filename);
+        }
+        else if (fs.existsSync(testfile)){
+            LOG && log("isKernelFile debugCudaGdb", path.basename(filename), path.basename(testfile));
+            await debugCudaGdb(testfile);
+        }
+        else if (fs.existsSync(sourcefile)){
+            LOG && log("isKernelFile debugCudaGdb", path.basename(sourcefile), path.basename(filename));
+            await debugCudaGdb(filename);
+        }
+        else{
+            LOG && log("isKernelFile debugKernelGpu", path.basename(filename), path.basename(testfile));
+            await createCppTest(filename, testfile);
+        }
+    }
+    else if(await isKernelFile(filename)) { // kernel file
+        // Part        Name                  Description
+        // /           Opening delimiter     Marks the beginning of the regular expression.
+        // \.          Escaped character     Matches a literal dot ".".
+        // (?:...)     Non-capturing group   Groups patterns without capturing them separately.
+        // cc|cu       Alternation (OR)      Matches either "cc" or "cu".
+        // $           End anchor            Matches at the end of the string.
+        // /           Closing delimiter     Marks the end of the regular expression.
+        // ''          Empty string          Removes the matched text.
+        // 
+        // Examples:  "kernel.cc"            "kernel"
+        //            "kernel.cu"            "kernel"
+        //            "kernel.cu_.cc"        "kernel.cu"
+        const sourcefile = filename.replace(/_\.(?:cc|cu)$/, '');
+        const testfile =  `${filename}_.cu`;
+
+        if(isExistMain(filename)){
+            LOG && log("isExistMain", path.basename(filename));
+            await debugCudaGdb(filename);
+        }
+        else if (fs.existsSync(testfile)){
+            LOG && log("isKernelFile existsSync(testfile)", path.basename(filename), path.basename(testfile));
+            await debugCudaGdb(testfile);
+        }
+        else if (filename != sourcefile && fs.existsSync(sourcefile)){
+            LOG && log("isKernelFile debugCudaGdb", path.basename(filename), path.basename(testfile));
+            await debugCudaGdb(filename);
+        }
+        else{
+            LOG && log("isKernelFile createKernelGpuTest", path.basename(filename), path.basename(testfile));
+            await createKernelGpuTest(filename, testfile);
+        }
     }
 }
 
@@ -1235,6 +1527,46 @@ async function toggleBreakpoint(){
     } 
 }
 
+async function install() {
+    const extensionPath = await getExtensionPath();
+    const installFile = path.join(extensionPath, 'install.sh');
+
+    LOG && log('install', installFile);
+
+    const { stdout, stderr } = await execFileAsync(
+        'bash',
+        [installFile],
+        { cwd: extensionPath, maxBuffer: 10 * 1024 * 1024 }
+    );
+
+    if (stdout) log(stdout.trimEnd());
+    if (stderr) log(stderr.trimEnd());
+
+    await vscode.commands.executeCommand('workbench.action.reloadWindow');
+}
+
+async function install() {
+    if (!await vscode.workspace.saveAll()) return;
+
+    const extensionPath = await getExtensionPath();
+    const installFile = path.join(extensionPath, 'install.sh');
+
+    LOG && log('extensionPath', extensionPath);
+    LOG && log('install', installFile);
+
+    const { stdout, stderr } = await execFileAsync(
+        'bash',
+        [installFile],
+        { cwd: extensionPath, maxBuffer: 10 * 1024 * 1024 }
+    );
+
+    if (stdout) log(stdout.trimEnd());
+    if (stderr) log(stderr.trimEnd());
+
+
+    await vscode.commands.executeCommand('workbench.action.reloadWindow');
+}
+
 async function activate(context) {
     try {
         registerShaderDefinitions(vscode, context);
@@ -1254,15 +1586,23 @@ async function activate(context) {
         }
     });
 
-    const debugCmd = vscode.commands.registerCommand('debug', async () => { // F6
+    const cudaGdbCmd = vscode.commands.registerCommand('cuda-gdb', async () => { // F4
         try {
             const editor = vscode.window.activeTextEditor;
             if (editor && !editor.document.isClosed && !await editor.document.save()) return;
-            await cmdDebug();
+            await cmdCudaGdb();
         } catch (error) {
-            console.error('mem: Error running cmdDebug', error);
-            log('Error running cmdDebug', error.message || error);
-            vscode.window.showErrorMessage(`mem: ${error.message || error}`);
+            log('Error activate::cmdCudaGdb', error.message || error);
+        }
+    });
+
+    const cppDbgCmd = vscode.commands.registerCommand('cppdbg', async () => { // F6
+        try {
+            const editor = vscode.window.activeTextEditor;
+            if (editor && !editor.document.isClosed && !await editor.document.save()) return;
+            await cmdCppDbg();
+        } catch (error) {
+            log('Error activate::cmdCppDbg', error.message || error);
         }
     });
 
@@ -1305,9 +1645,15 @@ async function activate(context) {
         }
     });
 
-    context.subscriptions.push(memCmd, debugCmd, stopCmd, toggleBreakpointCmd, stepOverCmd, toggleBreakpointCmd);
+    const installCmd = vscode.commands.registerCommand('install', async () => {
+        try {
+            await install();
+        } catch (error) {
+            log('Error activate::install', error.message || error);
+        }
+    });
 
-
+    context.subscriptions.push(memCmd, cudaGdbCmd, cppDbgCmd, stopCmd, toggleBreakpointCmd, stepOverCmd, installCmd);
 }
 
 function deactivate() {}

@@ -20,7 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Translate CUDA test includes in memory and compile them for ordinary GDB.
+"""Generate C++ from CUDA test includes and compile it for ordinary GDB.
 
 This is a serial CPU replay for independent CUDA threads, not a GPU simulator.
 Unsupported synchronization must fail rather than silently change its meaning.
@@ -222,13 +222,17 @@ def build(source, executable):
     program = translation.program()
     executable = executable.resolve()
     executable.parent.mkdir(parents=True, exist_ok=True)
+    generated_source = executable.parent / (source.name + '.generated.cpp')
+    # Retain provenance without redirecting GDB away from the generated code.
+    program = re.sub(r'^[ \t]*#line\b[^\r\n]*', r'// \g<0>', program, flags=re.MULTILINE)
+    generated_source.write_text(program, encoding='utf-8')
     dependency_flags = []
     if re.search(r'#\s*include\s*[<"]json/json\.h[>"]', program):
         dependency_flags = shlex.split(subprocess.check_output(
             ['pkg-config', '--cflags', '--libs', 'jsoncpp'], text=True))
     command = [*shlex.split(os.environ.get('CXX', 'g++')), '-std=c++17', '-O0', '-g3',
-               '-x', 'c++', '-', '-o', str(executable), *dependency_flags]
-    return subprocess.run(command, input=program, encoding='utf-8').returncode
+               '-x', 'c++', str(generated_source), '-o', str(executable), *dependency_flags]
+    return subprocess.run(command).returncode
 
 
 def main():
@@ -238,7 +242,7 @@ def main():
     parser.add_argument('--debugcpp', action='store_true')
     args = parser.parse_args()
     source = args.source.resolve()
-    executable = (args.output or source.parent / 'build' / source.name.split('.')[0]).resolve()
+    executable = (args.output or project_root(source) / 'build' / source.name.split('.')[0]).resolve()
     result = build(source, executable)
     if result or not args.debugcpp:
         return result

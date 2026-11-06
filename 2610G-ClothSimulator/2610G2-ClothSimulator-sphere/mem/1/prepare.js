@@ -73,7 +73,7 @@ function renderMethods(filename, className, names, automatic = false) {
 
 // Paired .cu_.cc tests can discover stateless methods automatically. The caller
 // still supplies type headers; stateful methods and overloads are unsupported.
-async function prepareCpp(source, buildDirectory) {
+async function prepare(source, buildDirectory) {
     const text = await fs.promises.readFile(source, 'utf8');
     const explicit = new RegExp(directive.source, 'm').test(text);
     const groups = explicit ? [] : discoverMethods(text, source);
@@ -104,4 +104,4 @@ async function prepareCpp(source, buildDirectory) {
     return { source: generatedSource, args: ['-I', path.dirname(source), '-I', path.join(cudaRoot, 'include')] };
 }
 
-module.exports = { prepareCpp };
+module.exports = { prepare };

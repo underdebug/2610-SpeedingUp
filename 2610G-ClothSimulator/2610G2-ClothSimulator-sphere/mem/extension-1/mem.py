@@ -39,8 +39,13 @@ np.set_printoptions(formatter={
     'float_kind': lambda x: f'{x:8.3f}',
     'int_kind': lambda x: f'{x:3d}',
 })
-def printf(*args, **kwargs):
-    print(*(shrink(data) for data in args), **kwargs)
+def printf(value, name, line):
+    try:
+        dimensions = np.shape(value)
+    except (TypeError, ValueError):
+        dimensions = ()
+    shape = '[' + ','.join(map(str, dimensions)) + ']' if dimensions else ''
+    print(value, '<--', name, shape, f'|{line}|')
 
 PROJECT_ROOT = os.environ.get('PROJECT_ROOT')
 if PROJECT_ROOT:              PATH = os.path.join(os.path.abspath(PROJECT_ROOT), 'mem')
@@ -917,9 +922,17 @@ def is_device_pointer(Name):
         return 2
 
 def shrink(data):
-    """Unwrap single-entry dictionaries, preserving the underlying value."""
+    """Recursively unwrap single-entry dictionaries without changing values."""
     while isinstance(data, dict) and len(data) == 1:
         data = next(iter(data.values()))
+    if isinstance(data, dict):
+        return {key: shrink(value) for key, value in data.items()}
+    if isinstance(data, np.ndarray) and data.dtype == object:
+        return shrink(data.tolist())
+    if isinstance(data, list):
+        return [shrink(value) for value in data]
+    if isinstance(data, tuple):
+        return tuple(shrink(value) for value in data)
     return data
 
 def mem_(Name, Type=None, Size=None, Step=1):
@@ -965,7 +978,7 @@ def mem_(Name, Type=None, Size=None, Step=1):
 
     else: return None
   
-    return shrink(data)
+    return data
 
 def aware(console = 0):
     try:
@@ -1019,10 +1032,12 @@ def mem(Name, Type=None, Size=None, Step=1):
 
     if LOG:
         data = mem_(Name, Type, Size, Step)
+        data = shrink(data)
         # np.save(f'{PATH}/data/{Name}.npy', data) 
     else:
         try:
             data = mem_(Name, Type, Size, Step)
+            data = shrink(data)
             # np.save(f'{PATH}/data/{Name}.npy', data) 
         except Exception as error:
             PRINT(f"mem: cannot read {Name!r}: {error}", file=sys.stderr)

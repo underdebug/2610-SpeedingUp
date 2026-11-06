@@ -26,7 +26,7 @@ const vscode = require('vscode');
 const { registerShaderDefinitions } = require('./definitions');
 const path = require('path');
 const fs = require('fs');
-const { prepareCpp } = require('./prepareCpp.cpp');
+const { prepare } = require('./prepare.js');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
@@ -50,9 +50,30 @@ async function printStack(session) {
         LOG && log('printStack', line);
         const item = vscode.debug.activeStackItem;
         let threadId = item && item.session === session ? item.threadId : undefined;
-        // CUDA-GDB owns a separate device focus. Asking for the first host
-        // thread's stack can replace that focus before evaluating GPU locals.
-        if (session.type === 'cuda-gdb') return;
+        // Read CUDA-GDB's current stack without selecting a DAP host thread
+        // or frame, which would replace the device focus before reading locals.
+        if (session.type === 'cuda-gdb') {
+            const script = [
+                'import gdb',
+                'frame = gdb.newest_frame()',
+                'names = []',
+                'for index in range(4):',
+                '    if frame is None:',
+                '        break',
+                "    names.append((frame.name() or '??').split('(', 1)[0].strip())",
+                '    if index < 3:',
+                '        frame = frame.older()',
+                `print(${line}, ' <-- '.join(names) or '(no stack)')`
+            ].join('\n');
+            const response = await session.customRequest('evaluate', {
+                expression: `-exec python exec(${JSON.stringify(script)}, {})`,
+                context: 'repl'
+            });
+            if (response && response.result) {
+                vscode.debug.activeDebugConsole.appendLine(response.result);
+            }
+            return;
+        }
         if (threadId === undefined) {
             const response = await session.customRequest('threads');
             threadId = response.threads && response.threads[0] && response.threads[0].id;
@@ -383,8 +404,8 @@ async function memCppCpp(session) {
         if(!await runExec(text)){  // -EXEC NODELETE         
             text = tokenText();
             if (text){ // TOKEN NODELETE
-                const expression = `value = mem(${JSON.stringify(text)}); printf(value, ${JSON.stringify('<= ' + text)}, list(value.shape) if hasattr(value, 'shape') and value.shape else '', '|${line}|')`;
-                const expr = `-exec python exec(${JSON.stringify(expression)})`.replace(/ {2,}/g, ' ');
+                const expression = `value = mem('${text}'); printf(value, '${text}', ${line})`;
+                const expr = `-exec python exec(${JSON.stringify(expression)})`;
                 const response = await session.customRequest('evaluate', {
                     expression: expr,
                     context: 'repl',
@@ -400,7 +421,7 @@ async function memCppCpp(session) {
         const isParameter = /^\S+$/.test(text.trim());
         
         if(isParameter){
-            const expression = `value = mem(${JSON.stringify(text)})\nprintf(value, ${JSON.stringify('<= ' + text)}, list(value.shape) if hasattr(value, 'shape') and value.shape else '', '|${line}|')`;
+            const expression = `value = mem('${text}'); printf(value, '${text}', ${line})`;
             const expr = `-exec python exec(${JSON.stringify(expression)})`;
             const response = await session.customRequest('evaluate', {
                 expression: expr,
@@ -641,7 +662,7 @@ async function buildCpp(editor, source = editor.document.uri.fsPath, preparedSou
         const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
         const root = folder ? folder.uri.fsPath : path.dirname(filename);
         await fs.promises.mkdir(appBuildDirectory(editor), { recursive: true });
-        const prepared = preparedSource || await prepareCpp(path.resolve(source), appBuildDirectory(editor));
+        const prepared = preparedSource || await prepare(path.resolve(source), appBuildDirectory(editor));
         const { stdout, stderr } = await execFileAsync(
             process.env.CXX || 'g++',
             ['-std=c++17', '-O0', '-ggdb3', '-fno-eliminate-unused-debug-types',
@@ -889,8 +910,8 @@ async function cmdMem() {
     if (!isPythonProgram) { // C++ program
         if (!isPythonFile) { // C++ program, C++ file
             LOG && log('memCppCpp(session) C++ program, C++ file')
-            await printStack(session);
             await initialMem(session);
+            await printStack(session);
 
             if (editor.selection.isEmpty) {
                 const commandText = editor.document.lineAt(editor.selection.active.line).text;
@@ -901,8 +922,8 @@ async function cmdMem() {
 
         } else { // C++ program, Python file
             LOG && log('memCppPython(session) C++ program, Python file')
-            await printStack(session);
             await initialMem(session);
+            await printStack(session);
             await memCppPython(session);
         }
         
@@ -1109,7 +1130,7 @@ async function cmdDebug() {
     if (testfile) {
         if (!await vscode.workspace.saveAll()) return;
         const source = path.resolve(testfile);
-        const prepared = await prepareCpp(source, appBuildDirectory(editor));
+        const prepared = await prepare(source, appBuildDirectory(editor));
         if (prepared.source !== source) {
             await buildCpp(editor, testfile, prepared);
             return;
