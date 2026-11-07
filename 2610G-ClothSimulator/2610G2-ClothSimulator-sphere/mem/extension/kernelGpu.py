@@ -180,12 +180,12 @@ def build(source, executable=None, coder=None):
                '--diag-suppress=20015,177,20011,20012,20013,20014,940',
                *shlex.split(os.environ.get('NVCCFLAGS', ''))]
 
-    # Single-file projects should build directly instead of generating a
-    # per-implementation ninja graph. This keeps the debug flow working when a
-    # source file is intentionally self-contained.
-    single_file = os.environ.get('MEM_CUDA_SINGLE_FILE', '').lower() in {'1', 'true', 'yes', 'on'}
-    if single_file or len(sources) == 1:
-        command = [*compiler, *options, *includes, '-x', 'cu', str(source), '-o', str(executable), *libraries]
+    # A self-contained CUDA program is compiled in one nvcc invocation. Projects
+    # with companion implementation files continue to use the cached Ninja build.
+    if len(sources) == 1:
+        executable.parent.mkdir(parents=True, exist_ok=True)
+        command = [*compiler, *options, *includes, '-x', 'cu', str(source),
+                   '-o', str(executable), *libraries]
         print(f'CUDA single-file build: {source}', flush=True)
         return subprocess.run(command).returncode
 
