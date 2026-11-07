@@ -1,25 +1,3 @@
-# MIT License
-
-# Copyright (c) 2026 Mingjie Zhang (mingjie2026@gmail.com)
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-
 """Build a CUDA test and its referenced implementations as separate cached objects."""
 from pathlib import Path
 import argparse
@@ -201,6 +179,16 @@ def build(source, executable=None, coder=None):
     options = ['-std=c++17', '-g', '-G', '-O0', *architecture_flags(root),
                '--diag-suppress=20015,177,20011,20012,20013,20014,940',
                *shlex.split(os.environ.get('NVCCFLAGS', ''))]
+
+    # Single-file projects should build directly instead of generating a
+    # per-implementation ninja graph. This keeps the debug flow working when a
+    # source file is intentionally self-contained.
+    single_file = os.environ.get('MEM_CUDA_SINGLE_FILE', '').lower() in {'1', 'true', 'yes', 'on'}
+    if single_file or len(sources) == 1:
+        command = [*compiler, *options, *includes, '-x', 'cu', str(source), '-o', str(executable), *libraries]
+        print(f'CUDA single-file build: {source}', flush=True)
+        return subprocess.run(command).returncode
+
     # Preserve cached objects when upgrading from build/<name>/<name>.
     legacy = executable_path(source)
     if legacy.is_dir() and (legacy / 'build.ninja').is_file() and not folder.exists():
@@ -267,4 +255,3 @@ if __name__ == '__main__':
     except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as error:
         print(f'kernelGpu.py: {error}', file=sys.stderr)
         sys.exit(1)
-
