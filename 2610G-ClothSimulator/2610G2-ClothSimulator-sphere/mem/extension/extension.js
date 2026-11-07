@@ -1284,7 +1284,7 @@ async function debugCudaGdb(source) {
     if (!await vscode.workspace.saveAll()) return false;
     LOG && log('vscode.workspace.saveAll()');
 
-    if (/\.cu$/i.test(source)) ({ source } = await prepareGpu(source));
+    // if (/\.cu$/i.test(source)) ({ source } = await prepareGpu(source));
 
     const filePath = path.dirname(source); // file path
     LOG && log('filePath', filePath);
