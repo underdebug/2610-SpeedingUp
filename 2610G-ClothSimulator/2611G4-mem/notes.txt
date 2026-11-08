@@ -1,0 +1,1 @@
+VS Code: chat.agent.enabled set to true
