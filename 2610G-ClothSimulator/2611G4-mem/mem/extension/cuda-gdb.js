@@ -2,17 +2,16 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-function replace(text) {
-    //-------------------------------------------------------------------------------------
-    // Only modify the text if the first line starts with #version.
-    if (/^[ \t]*#version\b/.test(text)) {
-        // Replace the first #version line with the shader header include.
-        text = text.replace(/^[ \t]*#version\b[^\r\n]*/, '#include "shader.h"');
+function replace_shader(text){
+    // #version ... --> #include "shader.h"
+    text = text.replace(/^[ \t]*#version\b[^\r\n]*/, '#include "shader.h"');
 
-        // Rename main() to shader().
-        text = text.replace(/\bmain\s*\(\s*\)/g, 'shader()');
-    }
+    // main() --> shader()
+    text = text.replace(/\bmain\s*\(\s*\)/g, 'shader()');
+    return text;
+}
 
+function replace_cpp(text){
     //-------------------------------------------------------------------------------------
     // Input:                   Output:
     // int x; // hello          int x; ········
@@ -26,6 +25,16 @@ function replace(text) {
     // a /* note                a ·······
     //    more */ + b               ·········· + b
     text = text.replace(/\/\*[\s\S]*?\*\//g, value => value.replace(/[^\r\n]/g, ' '));
+    return text;
+}
+
+function replace(text) {
+    // check shader file
+    if (/^[ \t]*#version\b/.test(text)) {
+        text = replace_shader(text);
+    }
+
+    text = replace_cpp(text);
     return text;
 }
 

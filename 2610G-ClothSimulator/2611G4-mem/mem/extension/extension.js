@@ -28,6 +28,7 @@ const path = require('path');
 const fs = require('fs');
 const { prepare } = require('./prepare.js');
 const { prepareGpu } = require('./cuda-gdb.js');
+const { prepareCpu } = require('./cppdbg.js');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
@@ -1194,7 +1195,137 @@ async function buildKernel(editor, source) {
     }
 }
 
+// async function cmdCppDbg() {
+//     const editor = vscode.window.activeTextEditor;
+//     if (!editor) {
+//         log('vscode.window.activeTextEditor; !editor return');
+//         return;
+//     }
+    
+//     const filename = editor.document.uri.fsPath;
+//     if(await isPythonFile(filename)){
+//         LOG && log('debugPython', 'isPythonFile:true', filename)
+//         await debugPython(editor);
+//         return;    
+//     }
+
+//     let sourcefile = "";
+//     let testfile = "";
+
+//     const filename_sub = filename.replace(/_?\.[^./\\]+$/, '');
+//     const filename_add =  `${filename}_.cc`;
+
+//     if (fs.existsSync(filename_sub)){
+//         sourcefile = filename_sub;
+//         testfile = filename;
+//         LOG && log("existsSync sourcefile", sourcefile, testfile)
+//     } 
+//     else if (fs.existsSync(filename_add)){
+//         sourcefile = filename;
+//         testfile = filename_add;
+//         LOG && log("existsSync testfile", sourcefile, testfile)
+//     }
+//     else {
+//         if(await isShaderFile(filename)){
+//             LOG && log("isShaderFile createShaderTest", filename)
+//             await createShaderTest(filename, filename_add);
+//         }
+//         else if(await isKernelFile(filename)){
+//             LOG && log("isKernelFile createKernelTest", filename)
+//             await createKernelTest(filename, filename_add);
+//         }
+//         else if(!isExistMain(filename)){
+//             LOG && log("!isExistMain createCppTest", filename)
+//             await createCppTest(filename, filename_add);
+//         }
+//         else{
+//             LOG && log("buildCpp debugCpp", filename)
+//             await buildCpp(editor, filename);
+//             return;
+//         }
+//         return;
+//     }
+
+//     if (testfile) {
+//         if (!await vscode.workspace.saveAll()) return;
+//         const source = path.resolve(testfile);
+//         const prepared = await prepare(source, appBuildDirectory(editor));
+//         if (prepared.source !== source) {
+//             await buildCpp(editor, testfile, prepared);
+//             return;
+//         }
+//     }
+
+//     if(await isShaderFile(sourcefile)){
+//         LOG && log("isShaderFile", sourcefile,  "buildShader", testfile)
+//         await buildShader(editor, testfile);
+//     }
+//     else if(await isKernelFile(sourcefile)){
+//         if (!await vscode.workspace.saveAll()) return;
+//         if (isExistMain(sourcefile)) {
+//             LOG && log("isKernelFile", sourcefile, "buildKernelMain", sourcefile)
+//             await buildKernelMain(editor, sourcefile);
+//         } else {
+//             LOG && log("isKernelFile", sourcefile, "buildKernel", testfile)
+//             await buildKernel(editor, testfile);
+//         }
+//     }
+//     else{
+//         LOG && log("buildCpp buildCpp", testfile)
+//         await buildCpp(editor, testfile);
+//     }
+// }
+
+// function isExistMain(filename) {
+//     return inspectDependencies(fs.readFileSync(filename, 'utf8')).definitions.has('main');
+// }
+
+
+async function debugCppDbg(source) {
+    LOG && log('start debugCppDbg', source);
+    if (!await vscode.workspace.saveAll()) return false;
+    LOG && log('vscode.workspace.saveAll()');
+
+    const filePath = path.dirname(source); // file path
+    LOG && log('filePath', filePath);
+
+    const filename = path.basename(source); // filename
+    LOG && log('filename', filename);
+
+    const buildPath = appBuildDirectory(vscode.window.activeTextEditor);
+    log('buildPath', buildPath);
+
+    const application = prepareCpu(source, buildPath);
+    log('application', application);
+
+    log('vscode.debug.startDebugging', 'CPPDBG', filename);
+    const started = await vscode.debug.startDebugging(undefined, {
+        name: `CPPDBG ${filename}`,
+        type: 'cppdbg',
+        request: 'launch',
+        program: application,
+        cwd: filePath,
+        MIMode: 'gdb',
+        miDebuggerPath: process.env.GDB || 'gdb',
+        internalConsoleOptions: 'openOnSessionStart',
+        stopAtEntry: false
+    });
+
+    if (!started) {
+        vscode.window.showErrorMessage('mem: Could not start the C++ debugger.');
+    }
+
+    log('vscode.debug.startDebugging', 'CPPDBG', started);
+    return started;
+}
+
 async function cmdCppDbg() {
+    function isExistMain(filename) {
+        return inspectDependencies(
+            fs.readFileSync(filename, 'utf8')
+        ).definitions.has('main');
+    }
+    
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
         log('vscode.window.activeTextEditor; !editor return');
@@ -1202,81 +1333,92 @@ async function cmdCppDbg() {
     }
     
     const filename = editor.document.uri.fsPath;
-    if(await isPythonFile(filename)){
+    LOG && log('filename', filename);
+
+    const filePath = path.dirname(filename);
+    LOG && log('filePath', filePath);
+
+    if(await isPythonFile(filename)){ // python file
         LOG && log('debugPython', 'isPythonFile:true', filename)
-        await debugPython(editor);
-        return;    
+        await debugPython(editor);  
     }
-
-    let sourcefile = "";
-    let testfile = "";
-
-    const filename_sub = filename.replace(/_?\.[^./\\]+$/, '');
-    const filename_add =  `${filename}_.cc`;
-
-    if (fs.existsSync(filename_sub)){
-        sourcefile = filename_sub;
-        testfile = filename;
-        LOG && log("existsSync sourcefile", sourcefile, testfile)
-    } 
-    else if (fs.existsSync(filename_add)){
-        sourcefile = filename;
-        testfile = filename_add;
-        LOG && log("existsSync testfile", sourcefile, testfile)
-    }
-    else {
-        if(await isShaderFile(filename)){
-            LOG && log("isShaderFile createShaderTest", filename)
-            await createShaderTest(filename, filename_add);
-        }
-        else if(await isKernelFile(filename)){
-            LOG && log("isKernelFile createKernelTest", filename)
-            await createKernelTest(filename, filename_add);
-        }
-        else if(!isExistMain(filename)){
-            LOG && log("!isExistMain createCppTest", filename)
-            await createCppTest(filename, filename_add);
+    else if(await isShaderFile(filename)) { // shader file
+        const testfile =  `${filename}_.cc`;
+        if (!fs.existsSync(testfile)){
+            LOG && log("isShaderFile createShaderTest", filename, testfile);
+            await createShaderTest(filename, testfile);
         }
         else{
-            LOG && log("buildCpp debugCpp", filename)
-            await buildCpp(editor, filename);
-            return;
-        }
-        return;
-    }
-
-    if (testfile) {
-        if (!await vscode.workspace.saveAll()) return;
-        const source = path.resolve(testfile);
-        const prepared = await prepare(source, appBuildDirectory(editor));
-        if (prepared.source !== source) {
-            await buildCpp(editor, testfile, prepared);
-            return;
-        }
-    }
-
-    if(await isShaderFile(sourcefile)){
-        LOG && log("isShaderFile", sourcefile,  "buildShader", testfile)
-        await buildShader(editor, testfile);
-    }
-    else if(await isKernelFile(sourcefile)){
-        if (!await vscode.workspace.saveAll()) return;
-        if (isExistMain(sourcefile)) {
-            LOG && log("isKernelFile", sourcefile, "buildKernelMain", sourcefile)
-            await buildKernelMain(editor, sourcefile);
-        } else {
-            LOG && log("isKernelFile", sourcefile, "buildKernel", testfile)
+            LOG && log("isShaderFile debugShader", filename, testfile);
             await buildKernel(editor, testfile);
         }
     }
-    else{
-        LOG && log("buildCpp buildCpp", testfile)
-        await buildCpp(editor, testfile);
-    }
-}
+    else if(await isCppFile(filename)) { // cpp file
+        // Part        Name                  Description
+        // /           Opening delimiter     Marks the beginning of the regular expression.
+        // \.          Escaped character     Matches a literal dot ".".
+        // (?:...)     Non-capturing group   Groups patterns without capturing them separately.
+        // cc|cu       Alternation (OR)      Matches either "cc" or "cu".
+        // $           End anchor            Matches at the end of the string.
+        // /           Closing delimiter     Marks the end of the regular expression.
+        // ''          Empty string          Removes the matched text.
+        // 
+        // Examples:  "kernel.cc"            "kernel"
+        //            "kernel.cu"            "kernel"
+        //            "kernel.cu_.cc"        "kernel.cu"
+        const sourcefile = filename.replace(/_\.(?:cc|cu)$/, '');
+        const testfile =  `${filename}_.cc`;
 
-function isExistMain(filename) {
-    return inspectDependencies(fs.readFileSync(filename, 'utf8')).definitions.has('main');
+        if(isExistMain(filename)){
+            LOG && log("isExistMain debugCudaGdb", filename);
+            await debugCppDbg(filename);
+        }
+        else if (fs.existsSync(testfile)){
+            LOG && log("isKernelFile debugCudaGdb", path.basename(filename), path.basename(testfile));
+            await debugCppDbg(testfile);
+        }
+        else if (filename !== sourcefile && fs.existsSync(sourcefile)){
+            LOG && log("isKernelFile debugCudaGdb", path.basename(sourcefile), path.basename(filename));
+            await debugCppDbg(filename);
+        }
+        else{
+            LOG && log("isKernelFile debugKernelGpu", path.basename(filename), path.basename(testfile));
+            await createCppTest(filename, testfile);
+        }
+    }
+    else if(await isKernelFile(filename)) { // kernel file
+        // Part        Name                  Description
+        // /           Opening delimiter     Marks the beginning of the regular expression.
+        // \.          Escaped character     Matches a literal dot ".".
+        // (?:...)     Non-capturing group   Groups patterns without capturing them separately.
+        // cc|cu       Alternation (OR)      Matches either "cc" or "cu".
+        // $           End anchor            Matches at the end of the string.
+        // /           Closing delimiter     Marks the end of the regular expression.
+        // ''          Empty string          Removes the matched text.
+        // 
+        // Examples:  "kernel.cc"            "kernel"
+        //            "kernel.cu"            "kernel"
+        //            "kernel.cu_.cc"        "kernel.cu"
+        const sourcefile = filename.replace(/_\.(?:cc|cu)$/, '');
+        const testfile =  `${filename}_.cu`;
+
+        if(isExistMain(filename)){
+            LOG && log("isExistMain", path.basename(filename));
+            await debugCppDbg(filename);
+        }
+        else if (fs.existsSync(testfile)){
+            LOG && log("isKernelFile existsSync(testfile)", path.basename(filename), path.basename(testfile));
+            await debugCppDbg(testfile);
+        }
+        else if (filename != sourcefile && fs.existsSync(sourcefile)){
+            LOG && log("isKernelFile debugCudaGdb", path.basename(filename), path.basename(testfile));
+            await debugCppDbg(filename);
+        }
+        else{
+            LOG && log("isKernelFile createKernelGpuTest", path.basename(filename), path.basename(testfile));
+            await createKernelTest(filename, testfile);
+        }
+    }
 }
 
 async function debugCudaGdb(source) {
@@ -1575,6 +1717,7 @@ async function activate(context) {
             await cmdCppDbg();
         } catch (error) {
             log('Error activate::cmdCppDbg', error.message || error);
+            await showBuildError(error);
         }
     });
 
