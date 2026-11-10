@@ -2,42 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-function replace_shader(text){
-    // #version ... --> #include "shader.h"
-    text = text.replace(/^[ \t]*#version\b[^\r\n]*/, '#include "shader.h"');
-
-    // main() --> shader()
-    text = text.replace(/\bmain\s*\(\s*\)/g, 'shader()');
-    return text;
-}
-
-function replace_cpp(text){
-    //-------------------------------------------------------------------------------------
-    // Input:                   Output:
-    // int x; // hello          int x; ········
-    // run(); // test           run(); ·······
-    // // comment               ··········
-    text = text.replace(/\/\/[^\r\n]*/g, value => ' '.repeat(value.length));
-    
-    //-------------------------------------------------------------------------------------
-    // Input:                   Output:
-    // a /* note */ + b         a ·········· + b
-    // a /* note                a ·······
-    //    more */ + b               ·········· + b
-    text = text.replace(/\/\*[\s\S]*?\*\//g, value => value.replace(/[^\r\n]/g, ' '));
-    return text;
-}
-
-function replace(text) {
-    // check shader file
-    if (/^[ \t]*#version\b/.test(text)) {
-        text = replace_shader(text);
-    }
-
-    text = replace_cpp(text);
-    return text;
-}
-
 // Read local quoted header references from a C++ source file.
 function discoverHeaders(source) {
     const code = fs.readFileSync(source, 'utf8');

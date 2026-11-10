@@ -4,11 +4,12 @@
 #include <cmath>
 #include <cstddef>
 
-// Host equivalents needed by the unchanged reconstruction kernel.
 #define __constant__
 #define __global__
+
 struct float2 { float x, y; };
 inline float2 make_float2(float x, float y) { return {x, y}; }
+
 struct dim3 {
     unsigned int x, y, z;
     constexpr dim3(unsigned int x = 1, unsigned int y = 1, unsigned int z = 1)
@@ -21,23 +22,36 @@ struct dim3 {
         return *this;
     }
 
-    dim3 operator / (const int div)
+    dim3 operator / (const int div) const
     {
-        x /= div;
-        y /= div;
-        z /= div;
-        return *this;
+        return dim3(x / div, y / div, z / div);
     }
 };
+
 inline thread_local dim3 blockDim, blockIdx, threadIdx;
+template<class F> void run_kernel(dim3 grid, dim3 block, F function) {
+    const dim3 blockDimOld = blockDim, blockIdxOld = blockIdx, threadIdxOld = threadIdx;
+    blockDim = block;
+    const dim3 offset = grid / 2;
+
+    for (unsigned int z = 0; z < grid.z; ++z)
+    for (unsigned int y = 0; y < grid.y; ++y)
+    for (unsigned int x = 0; x < grid.x; ++x)
+    for (threadIdx.z = 0; threadIdx.z < block.z; ++threadIdx.z)
+    for (threadIdx.y = 0; threadIdx.y < block.y; ++threadIdx.y)
+    for (threadIdx.x = 0; threadIdx.x < block.x; ++threadIdx.x) {
+        blockIdx = dim3((x + offset.x) % grid.x, (y + offset.y) % grid.y, (z + offset.z) % grid.z);
+        function();
+    }
+    blockDim = blockDimOld; blockIdx = blockIdxOld; threadIdx = threadIdxOld;
+}
+
 struct CpuTexture3D {
     const float* data;
     int width, height, depth;
 };
 using cudaTextureObject_t = const CpuTexture3D*;
 
-// Unnormalized texel centers and zero border, with trilinear interpolation.
-// CPU interpolation uses full floating point precision.
 template <typename T>
 inline T tex3D(cudaTextureObject_t texture, float x, float y, float z) {
     if (!texture || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)

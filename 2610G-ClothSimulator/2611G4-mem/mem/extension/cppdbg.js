@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 
 function replace_cpp(text){
@@ -21,6 +20,10 @@ function replace_cpp(text){
 }
 
 function replace_shader(text){
+    if (!/^[ \t]*#version\b/m.test(text)){
+        return text;
+    } 
+
     // #version ... => #include "shader.h"
     text = text.replace(/^[ \t]*#version\b[^\r\n]*/, '#include "shader.h"');
 
@@ -30,16 +33,64 @@ function replace_shader(text){
 }
 
 function replace_kernel(text){
-    // Use the CPU definitions for CUDA headers in generated files.
-    text = text.replace(/^[ \t]*#[ \t]*include[ \t]*[<"](?:cuda_[^>"\r\n]*|device_launch_parameters\.h)[>"]/gm, '#include "kernel.h"');
+    // #include <cuda_...> => #include "kernel.h"
+    text = text.replace(/^[ \t]*#[ \t]*include[ \t]*[<"]cuda_[^>"\r\n]*[>"]/gm, '#include "kernel.h"');
+ 
+    // #include <device_launch_parameters.h> => #include "kernel.h"
+    text = text.replace(/^[ \t]*#[ \t]*include[ \t]*[<"]device_launch_parameters\.h[>"]/gm, '#include "kernel.h"');
+    return text;
+}
+
+function replace_kernel_func(text){
+    // kernel<<<grid, block>>>(args) => run_kernel(dim3(grid), dim3(block), ...)
+    // kernel<<<grid, block>>>( => kernel name and launch configuration
+    const launch = /\b([A-Za-z_]\w*(?:::\w+)*)[ \t]*<<<([^\r\n]*?)>>>[ \t]*\(/g;
+    // Matches => replacement ranges and generated calls
+    const replacements = [];
+    let match;
+
+    while ((match = launch.exec(text)) !== null) {
+        const configStart = match.index + match[0].indexOf('<<<') + 3;
+        const config = match[2];
+        let depth = 0;
+        let comma = -1;
+        for (let i = 0; i < config.length; i++) {
+            if ('([{'.includes(config[i])) depth++;
+            else if (')]}'.includes(config[i])) depth--;
+            else if (config[i] === ',' && depth === 0) {
+                if (comma !== -1) throw new Error('CPU replay supports only grid and block launch dimensions');
+                comma = i;
+            }
+        }
+        if (comma < 0) throw new Error('Expected grid and block dimensions in CUDA launch');
+
+        const argsStart = launch.lastIndex;
+        let end = argsStart;
+        depth = 1;
+        while (end < text.length && !/[\r\n]/.test(text[end]) && depth) {
+            if (text[end] === '(') depth++;
+            else if (text[end] === ')') depth--;
+            end++;
+        }
+        if (depth) continue;
+
+        const grid = text.slice(configStart, configStart + comma);
+        const block = text.slice(configStart + comma + 1, configStart + config.length);
+        const args = text.slice(argsStart, end - 1);
+        replacements.push([match.index, end, `run_kernel(dim3(${grid}), dim3(${block}), [&]() { ${match[1]}(${args}); })`]);
+        launch.lastIndex = end;
+    }
+    for (const [start, end, replacement] of replacements.reverse()) {
+        text = text.slice(0, start) + replacement + text.slice(end);
+    }
     return text;
 }
 
 function replace(text) {
-    // check shader file
     text = replace_cpp(text);
     text = replace_shader(text);
     text = replace_kernel(text);
+    text = replace_kernel_func(text);
     return text;
 }
 
@@ -93,28 +144,34 @@ function collectSources(source, visited = new Set()) {
 }
 
 // Generate CPU copies of sources and their local headers without changing the originals.
-function generateCpuFile(source, buildDir, generated = new Map()) {
+function generateCpuFile(source, buildDir, sourceRoot, generated = new Map()) {
     source = path.resolve(source);
     if (generated.has(source)) return generated.get(source);
 
-    const id = crypto.createHash('sha256').update(source).digest('hex').slice(0, 16);
-    const output = path.join(buildDir, `${id}-${path.basename(source)}`);
-    generated.set(source, output);
+    let relative = path.relative(sourceRoot, source);
+    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+        relative = path.join('__external__', source.replace(/^([A-Za-z]:)?[/\\]+/, ''));
+    }
+    const destination = path.join(buildDir, relative);
+    generated.set(source, destination);
 
     let code = fs.readFileSync(source, 'utf8');
     code = code.replace(/^(\s*#\s*include\s*)"([^"\r\n]+)"/gm, (match, prefix, header) => {
         const local = path.resolve(path.dirname(source), header);
         if (!fs.existsSync(local) || !fs.statSync(local).isFile()) return match;
-        return prefix + JSON.stringify(generateCpuFile(local, buildDir, generated));
+        return prefix + JSON.stringify(generateCpuFile(local, buildDir, sourceRoot, generated));
     });
-    code = replace_kernel(code);
-    fs.writeFileSync(output, `#line 1 ${JSON.stringify(source)}\n${code}`);
-    return output;
+
+    code = replace(code);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.writeFileSync(destination, `#line 1 ${JSON.stringify(source)}\n${code}`);
+    return destination;
 }
 
 // Compile one C++ source file into an object file.
-function compileSource(source, buildDir) {
-    const object = path.join(buildDir, `${path.basename(source, path.extname(source))}.o`);
+function compileSource(source, buildDir, generatedDir) {
+    const object = path.join(buildDir, `${path.relative(generatedDir, source)}.o`);
+    fs.mkdirSync(path.dirname(object), { recursive: true });
 
     execFileSync(process.env.CXX || 'g++', [
         '-std=c++17',
@@ -139,19 +196,21 @@ function linkObjects(objects, output) {
     ], { encoding: 'utf8' });
 }
 
-
 function prepareCpu(entry, buildDir) {
     entry = path.resolve(entry);
     const programName = path.basename(entry).split('.')[0];
     buildDir = path.resolve(buildDir);
     
     const objectDir = path.join(buildDir, 'cppdbg');
+    const generatedDir = path.join(buildDir, 'generated');
     fs.mkdirSync(objectDir, { recursive: true });
 
     const output = path.join(buildDir, programName);
     const sources = [...collectSources(entry)];
     const generated = new Map();
-    const objects = sources.map(source => compileSource(generateCpuFile(source, objectDir, generated), objectDir));
+    const objects = sources.map(source =>
+        compileSource(generateCpuFile(source, generatedDir, path.dirname(entry), generated), objectDir, generatedDir)
+    );
         
     linkObjects(objects, output);
 
