@@ -997,7 +997,7 @@ async function install() {
     LOG && log('install', installFile);
 
     const { stdout, stderr } = await execFileAsync(
-        'sudo bash',
+        'bash',
         [installFile],
         { cwd: extensionPath, maxBuffer: 10 * 1024 * 1024 }
     );
