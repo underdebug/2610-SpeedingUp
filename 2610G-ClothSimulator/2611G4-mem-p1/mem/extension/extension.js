@@ -20,10 +20,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-LOG = 1; // 10/29 2026
+LOG = 0; // 10/29 2026
 
 const vscode = require('vscode');
-const { registerShaderDefinitions } = require('./definitions');
+const { registerShaderDefinitions } = require('./definitions.js');
 const path = require('path');
 const fs = require('fs');
 const { prepareGpu } = require('./cuda-gdb.js');
@@ -91,8 +91,8 @@ function log(...args) {
     const name = fn ? fn[1] : '<anonymous>';
 
     const message = `${String(line).padStart(3)} ${name.padEnd(13)} ${args.join(' ')}`;
-    printOutput(message);
-    printTerminal(message);
+    // printOutput(message);
+    // printTerminal(message);
     
     if (vscode.debug.activeDebugSession) {
         vscode.debug.activeDebugConsole.appendLine(message);
@@ -180,13 +180,13 @@ async function getFrameId(session) {
 }
 
 async function getProjectPath() {
-    const foldeworkspaceFolders = vscode.workspace.workspaceFolders;
-    if (foldeworkspaceFolders && foldeworkspaceFolders[0]) {
-        return foldeworkspaceFolders[0].uri.fsPath;
-    }
-
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-    return workspaceFolder;
+    const editor = vscode.window.activeTextEditor;
+    const folder = editor && vscode.workspace.getWorkspaceFolder(editor.document.uri);
+    if (folder) return folder.uri.fsPath;
+    const folders = vscode.workspace.workspaceFolders;
+    if (folders && folders[0]) return folders[0].uri.fsPath;
+    if (editor) return path.dirname(editor.document.uri.fsPath);
+    throw new Error('Open a file or workspace first.');
 }
 
 async function getFilePath() {
@@ -196,26 +196,15 @@ async function getFilePath() {
     return path.dirname(editor.document.uri.fsPath);
 }
 
-async function getExtensionPath() {
-    const foldeworkspaceFolders = vscode.workspace.workspaceFolders;
-    if (foldeworkspaceFolders && foldeworkspaceFolders[0]) {
-        const workspaceFolder = foldeworkspaceFolders[0].uri.fsPath;
-        const extensionFolder = path.join(workspaceFolder, 'mem', 'extension');
-        return extensionFolder;
-    }
-    const extensionFolder = JSON.stringify(__dirname.replace(/\\/g, '/'));
-    return extensionFolder;
-}
-
 async function initialMem(session) {
     const editor = vscode.window.activeTextEditor;
     const frameId = await getFrameId(session);
     LOG && log('initialMem', 'getFrameId', frameId);
 
     const PROJECT_PATH = await getProjectPath();
-    const EXTENSION_PATH = await getExtensionPath();
+    const EXTENSION_PATH = __dirname;
 
-    const expr = `-exec python import os, sys; PROJECT_PATH=${PROJECT_PATH}; os.environ['PROJECT_PATH']=PROJECT_PATH; sys.path[:0]=[os.path.join(PROJECT_PATH, 'mem/extension'), ${EXTENSION_PATH}]; import importlib, mem; importlib.reload(mem); from mem import *;`; // NOMODIFY, NODELETE
+    const expr = `-exec python import os, sys, importlib.util; PROJECT_PATH=${JSON.stringify(PROJECT_PATH)}; os.environ['PROJECT_PATH']=PROJECT_PATH; spec=importlib.util.spec_from_file_location('mem', os.path.join(${JSON.stringify(EXTENSION_PATH)}, 'mem.py')); mem=importlib.util.module_from_spec(spec); sys.modules['mem']=mem; spec.loader.exec_module(mem); from mem import *;`; // NOMODIFY, NODELETE
     LOG && log('initialMem', expr);
 
     try {
@@ -315,8 +304,8 @@ async function runExec_source(session, sourceText) {
     }
 
     const normalizedPath = sourcePath.replace(/\\/g, '/');
-    const expr = functionName
-        ? `-exec python __file__ = ${JSON.stringify(normalizedPath)}; exec(compile(open(__file__, 'rb').read(), __file__, 'exec'), globals()); ${functionName}(*${JSON.stringify(functionArgs)})`
+    const expr = /\.py$/i.test(normalizedPath)
+        ? `-exec python __file__ = ${JSON.stringify(normalizedPath)}; exec(compile(open(__file__, 'rb').read(), __file__, 'exec'), globals())${functionName ? `; ${functionName}(*${JSON.stringify(functionArgs)})` : ''}`
         : `-exec source ${normalizedPath}`;
 
     const frameId = await getFrameId(session);
@@ -500,7 +489,6 @@ async function memCppCpp(session) {
 
 async function memCppPython(session) {
     const editor = vscode.window.activeTextEditor;
-    const line = editor.selection.active.line + 1;
     const frameId = await getFrameId(session);
 
     let text;
@@ -512,11 +500,10 @@ async function memCppPython(session) {
         LOG && log('memCppPython', 'editor.document.getText(editor.selection)', text);
     }
 
-    const lines = text.split(/\r?\n/).map(line => line.replace(/\s+$/, ''));
-    expression = lines.join(' \n');
-    expression = JSON.stringify(expression);
-
-    const expr = `-exec python exec(${expression})`;
+    // Keep the Python source intact and avoid passing its quotes and newlines
+    // through the debugger adapter's command parser.
+    const encoded = Buffer.from(text, 'utf8').toString('base64');
+    const expr = `-exec python exec(__import__('base64').b64decode('${encoded}'))`;
     LOG && log('memCppPython', expr);
 
     try {
@@ -525,9 +512,9 @@ async function memCppPython(session) {
             context: 'repl',
             frameId: frameId
         });
-        // if (response && typeof response.result === 'string' && response.result.length > 0) {
-        //     vscode.debug.activeDebugConsole.appendLine(response.result);
-        // }
+        if (response && typeof response.result === 'string' && response.result.length > 0) {
+            vscode.debug.activeDebugConsole.appendLine(response.result);
+        }
     } catch (e) {
         log('Error memCppPython', expr, e.message);
     }
@@ -814,10 +801,10 @@ async function debugCppDbg(source) {
     });
 
     if (!started) {
-        log('Could not start the CUDA-GDB debugger.');
+        vscode.window.showErrorMessage('mem: Could not start the C++ debugger. Check that the C/C++ extension is enabled.');
     }
 
-    log('vscode.debug.startDebugging', 'CUDA-GDB', started);
+    log('vscode.debug.startDebugging', 'CPPDBG', started);
     return started;
 }
 
@@ -1003,14 +990,14 @@ async function toggleBreakpoint() {
 async function install() {
     if (!await vscode.workspace.saveAll()) return;
 
-    const extensionPath = await getExtensionPath();
+    const extensionPath = __dirname;
     const installFile = path.join(extensionPath, 'install.sh');
 
     LOG && log('extensionPath', extensionPath);
     LOG && log('install', installFile);
 
     const { stdout, stderr } = await execFileAsync(
-        'bash',
+        'sudo bash',
         [installFile],
         { cwd: extensionPath, maxBuffer: 10 * 1024 * 1024 }
     );
@@ -1058,7 +1045,8 @@ async function activate(context) {
             await cmdCppDbg();
         } catch (error) {
             log('Error activate::cmdCppDbg', error.message || error);
-            await showBuildError(error);
+            const detail = error.stderr ? String(error.stderr).trim() : (error.message || String(error));
+            vscode.window.showErrorMessage(`mem: ${detail}`);
         }
     });
 

@@ -30,6 +30,7 @@ import numpy as np
 import inspect
 import math
 import re
+from pathlib import Path
 
 np.set_printoptions(suppress=True)  # FORMAT LONG G *
 np.set_printoptions(linewidth=150)  # MAX WIDTH NODELETE
@@ -47,8 +48,8 @@ def printf(value, name, line):
     shape = '[' + ','.join(map(str, dimensions)) + ']' if dimensions else ''
     print(value, '<--', name, shape, f'|{line}|')
 
-PROJECT_ROOT = os.environ.get('PROJECT_ROOT')
-if PROJECT_ROOT:              PATH = os.path.join(os.path.abspath(PROJECT_ROOT), 'mem')
+PROJECT_PATH = os.environ.get('PROJECT_PATH')
+if PROJECT_PATH:              PATH = os.path.join(os.path.abspath(PROJECT_PATH), 'mem')
 elif '__file__' in globals(): PATH = str(Path(__file__).resolve().parent / 'mem')
 else:                         PATH = os.path.abspath('mem')
 os.makedirs(f'{PATH}/data',   exist_ok=True)
