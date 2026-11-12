@@ -17,19 +17,20 @@ function getBuildOptions(projectDir) {
 }
 
 function replace_cpp(text){
-    //-------------------------------------------------------------------------------------
     // Input:                   Output:
     // int x; // hello          int x; ········
     // run(); // test           run(); ·······
     // // comment               ··········
     text = text.replace(/\/\/[^\r\n]*/g, value => ' '.repeat(value.length));
-    
-    //-------------------------------------------------------------------------------------
+
     // Input:                   Output:
     // a /* note */ + b         a ·········· + b
     // a /* note                a ·······
     //    more */ + b               ·········· + b
     text = text.replace(/\/\*[\s\S]*?\*\//g, value => value.replace(/[^\r\n]/g, ' '));
+
+    // Change MAIN( to main(
+    text = text.replace(/\bMain(?=\s*\()/g, 'main');
     return text;
 }
 
@@ -41,8 +42,8 @@ function replace_shader(text){
     // #version ... => #include "shader.h"
     text = text.replace(/^[ \t]*#version\b[^\r\n]*/, '#include "shader.h"');
 
-    // main() => shader()
-    text = text.replace(/\bmain\s*\(\s*\)/g, 'shader()');
+    // main() => SHADER().
+    text = text.replace(/\bmain\s*\(\s*\)/g, 'Shader()');
     return text;
 }
 

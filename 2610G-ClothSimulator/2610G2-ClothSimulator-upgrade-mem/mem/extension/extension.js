@@ -722,7 +722,8 @@ async function createKernelGpuTest(sourcefile, testfile) {
 
 function isTestFile(filename) {
     if (isShaderFile(filename)) return false;
-    return fs.readFileSync(filename, 'utf8').includes('main(');
+    const contents = fs.readFileSync(filename, 'utf8');
+    return contents.includes('main(') || contents.includes('Main(');
 }
 
 async function debugCppDbg(source) {
@@ -752,8 +753,6 @@ async function debugCppDbg(source) {
             return;
         }
     }
-
-    LOG && log("!if(!isTestFile(source) && !isExistMain(source))")
 
     const filePath = path.dirname(source); // file path
     LOG && log('filePath', filePath);
@@ -836,8 +835,6 @@ async function debugCudaGdb(source) {
             return;
         }
     }
-
-    LOG && log("!if(!isTestFile(source) && !isExistMain(source))")
 
     const filePath = path.dirname(source); // file path
     LOG && log('filePath', filePath);

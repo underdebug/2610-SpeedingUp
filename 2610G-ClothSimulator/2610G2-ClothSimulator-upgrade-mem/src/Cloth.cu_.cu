@@ -2,9 +2,9 @@
 #include <cuda_runtime.h>
 #include "Cloth.cuh"
 
-bool gpu = true;
+// bool gpu = true;
 
-int main() {
+int Main() {
     printf("hello mingjie!");
     return 0;
 }

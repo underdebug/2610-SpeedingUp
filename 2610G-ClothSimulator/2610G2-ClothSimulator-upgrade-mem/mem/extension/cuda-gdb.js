@@ -17,6 +17,43 @@ function getBuildOptions(projectDir) {
     };
 }
 
+function replace_cpp(text){
+    // Input:                   Output:
+    // int x; // hello          int x; ········
+    // run(); // test           run(); ·······
+    // // comment               ··········
+    text = text.replace(/\/\/[^\r\n]*/g, value => ' '.repeat(value.length));
+
+    // Input:                   Output:
+    // a /* note */ + b         a ·········· + b
+    // a /* note                a ·······
+    //    more */ + b               ·········· + b
+    text = text.replace(/\/\*[\s\S]*?\*\//g, value => value.replace(/[^\r\n]/g, ' '));
+
+    // Change MAIN( to main(
+    text = text.replace(/\bMain(?=\s*\()/g, 'main');
+    return text;
+}
+
+function replace_shader(text){
+    if (!/^[ \t]*#version\b/m.test(text)){
+        return text;
+    } 
+
+    // #version ... => #include "shader.h"
+    text = text.replace(/^[ \t]*#version\b[^\r\n]*/, '#include "shader.h"');
+
+    // main() => Shader().
+    text = text.replace(/\bmain\s*\(\s*\)/g, 'Shader()');
+    return text;
+}
+
+function replace(text) {
+    text = replace_cpp(text);
+    text = replace_shader(text);
+    return text;
+}
+
 // Read local quoted header references from a C++ source file.
 function discoverHeaders(source) {
     const code = fs.readFileSync(source, 'utf8');
@@ -84,6 +121,8 @@ function generateGpuFile(source, buildDir, sourceRoot, generated = new Map(), ch
         if (!fs.existsSync(local) || !fs.statSync(local).isFile()) return match;
         return prefix + JSON.stringify(generateGpuFile(local, buildDir, sourceRoot, generated, changedFiles));
     });
+
+    code = replace(code);
 
     fs.mkdirSync(path.dirname(destination), { recursive: true });
     const contents = `#line 1 ${JSON.stringify(source)}\n${code}`;
