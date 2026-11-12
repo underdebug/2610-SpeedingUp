@@ -6,6 +6,7 @@
 #include <cmath>
 #include <vector>
 #include <cstdint>
+
 using namespace glm;
 using uint = unsigned int;
 #define layout(...)

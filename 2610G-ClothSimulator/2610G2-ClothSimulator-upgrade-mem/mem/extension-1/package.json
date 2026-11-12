@@ -1,7 +1,7 @@
 {
   "name": "mem",
   "displayName": "mem",
-  "description": "Join the selection lines with commas and run -exec python in the debug console.",
+  "description": "mingjie2026@gmail.com",
   "version": "0.0.1",
   "publisher": "local",
   "engines": {
@@ -14,12 +14,16 @@
   "contributes": {
     "commands": [
       {
-        "command": "debug",
-        "title": "debug"
-      },
-      {
         "command": "mem",
         "title": "mem"
+      },
+      {
+        "command": "cuda-gdb",
+        "title": "cuda-gdb"
+      },
+      {
+        "command": "cppdbg",
+        "title": "cppdbg"
       },
       {
         "command": "stop",
@@ -32,6 +36,10 @@
       {
         "command": "stepOver",
         "title": "stepOver"
+      },
+      {
+        "command": "install",
+        "title": "install"
       }
     ],
     "keybindings": [
@@ -63,8 +71,13 @@
         "command": "workbench.action.navigateForward"
       },
       {
+        "key": "f4",
+        "command": "cuda-gdb",
+        "when": "(filesExplorerFocus || editorTextFocus) && !inDebugMode"
+      },
+      {
         "key": "f6",
-        "command": "debug",
+        "command": "cppdbg",
         "when": "(filesExplorerFocus || editorTextFocus) && !inDebugMode"
       },
       {
@@ -93,6 +106,10 @@
         "key": "ctrl+alt+b",
         "command": "cmake.build",
         "when": "cmake:enableFullFeatureSet"
+      },
+      {
+        "key": "ctrl+alt+p",
+        "command": "install"
       }
     ]
   }

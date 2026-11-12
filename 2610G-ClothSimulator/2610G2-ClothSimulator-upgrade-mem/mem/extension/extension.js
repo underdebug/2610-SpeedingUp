@@ -990,17 +990,30 @@ async function toggleBreakpoint() {
 async function install() {
     if (!await vscode.workspace.saveAll()) return;
 
-    const extensionPath = __dirname;
+    const extensionPath = (vscode.workspace.workspaceFolders || [])
+        .filter(folder => folder.uri.scheme === 'file')
+        .map(folder => path.join(folder.uri.fsPath, 'mem', 'extension'))
+        .find(dir => fs.existsSync(path.join(dir, 'install.sh')));
+    if (!extensionPath) {
+        vscode.window.showErrorMessage('mem: Open the project containing mem/extension/install.sh.');
+        return;
+    }
     const installFile = path.join(extensionPath, 'install.sh');
 
     LOG && log('extensionPath', extensionPath);
     LOG && log('install', installFile);
 
-    const { stdout, stderr } = await execFileAsync(
-        'bash',
-        [installFile],
-        { cwd: extensionPath, maxBuffer: 10 * 1024 * 1024 }
-    );
+    let stdout, stderr;
+    try {
+        ({ stdout, stderr } = await execFileAsync(
+            'bash',
+            [installFile],
+            { cwd: extensionPath, maxBuffer: 10 * 1024 * 1024 }
+        ));
+    } catch (error) {
+        vscode.window.showErrorMessage(`mem: Installation failed: ${error.stderr || error.message}`);
+        return;
+    }
 
     if (stdout) log(stdout.trimEnd());
     if (stderr) log(stderr.trimEnd());

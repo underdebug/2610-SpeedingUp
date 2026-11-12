@@ -19,3 +19,25 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+~/.vscode/extensions
+/home/roots/.vscode/extensions/local.mem-0.0.1
+
+/home/roots/.config/Code/User/keybindings.json
+
+code --disable-extensions .
+code --disable-gpu .
+
+Extension Development Host
+
+node --version
+npm --version
+
+sudo apt install npm
+
+sudo npm install -g @vscode/vsce
+
+Ctrl + Shit + P
+Extensions: Install from VSIX...
+
+code --install-extension ganymede404.vscode-codex-usage
