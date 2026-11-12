@@ -1,24 +1,3 @@
-// MIT License
-
-// Copyright (c) 2026 Mingjie Zhang (mingjie2026@gmail.com)
-
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
 
 LOG = 0; // 10/29 2026
 
@@ -91,11 +70,13 @@ function log(...args) {
     const name = fn ? fn[1] : '<anonymous>';
 
     const message = `${String(line).padStart(3)} ${name.padEnd(13)} ${args.join(' ')}`;
-    // printOutput(message);
-    // printTerminal(message);
     
     if (vscode.debug.activeDebugSession) {
         vscode.debug.activeDebugConsole.appendLine(message);
+    }
+    else{
+        printOutput(message);
+        //printTerminal(message);
     }
 }
 
@@ -679,6 +660,20 @@ function isCppFile(filename) { return /\.(c|cc|cpp|h|hpp)$/i.test(filename); }
 function isShaderFile(filename) { return /\.(vert|frag|comp|glsl)$/i.test(filename); }
 function isKernelFile(filename) { return /\.(cu|cuh)$/i.test(filename); }
 
+async function createCppTest(sourcefile, testfile) {
+    const includePath = path.relative(path.dirname(testfile), sourcefile).replace(/\\/g, '/');
+    const wrapper = `#include <stdio.h>\n#include "${includePath}"\n\nint main() {\n    printf("hello mingjie!");\n    return 0;\n}\n`;
+    try {
+        await fs.promises.writeFile(testfile, wrapper, { encoding: 'utf8', flag: 'wx' });
+    } catch (e) {
+        if (e.code !== 'EEXIST') {
+            log('Error creating common C++ wrapper', e.message);
+            vscode.window.showErrorMessage(`mem: ${e.message}`);
+            return;
+        }
+    }
+}
+
 async function createShaderTest(sourcefile, testfile) {
     const includePath = path.relative(path.dirname(testfile), sourcefile).replace(/\\/g, '/');
     const wrapper = `#include <stdio.h>\n#include "${includePath}"\n\nint main() {\n    printf("hello mingjie!");\n    shader();\n    return 0;\n}\n`;
@@ -694,27 +689,15 @@ async function createShaderTest(sourcefile, testfile) {
 }
 
 async function createKernelTest(sourcefile, testfile) {
-    const includePath = path.relative(path.dirname(testfile), sourcefile).replace(/\\/g, '/');
+    const header = sourcefile.replace(/\.cu$/, '.cuh');
+    const includePath = path.relative(path.dirname(testfile),
+        fs.existsSync(header) ? header : sourcefile).replace(/\\/g, '/');
     const wrapper = `#include <stdio.h>\n#include "kernel.h"\n#include "${includePath}"\n\nint main() {\n    printf("hello mingjie!");\n    return 0;\n}\n`;
     try {
         await fs.promises.writeFile(testfile, wrapper, { encoding: 'utf8', flag: 'wx' });
     } catch (e) {
         if (e.code !== 'EEXIST') {
             log('Error creating kernel C++ wrapper', e.message);
-            vscode.window.showErrorMessage(`mem: ${e.message}`);
-            return;
-        }
-    }
-}
-
-async function createCppTest(sourcefile, testfile) {
-    const includePath = path.relative(path.dirname(testfile), sourcefile).replace(/\\/g, '/');
-    const wrapper = `#include <stdio.h>\n#include "${includePath}"\n\nint main() {\n    printf("hello mingjie!");\n    return 0;\n}\n`;
-    try {
-        await fs.promises.writeFile(testfile, wrapper, { encoding: 'utf8', flag: 'wx' });
-    } catch (e) {
-        if (e.code !== 'EEXIST') {
-            log('Error creating common C++ wrapper', e.message);
             vscode.window.showErrorMessage(`mem: ${e.message}`);
             return;
         }

@@ -1,28 +1,20 @@
-// MIT License
-
-// Copyright (c) 2026 Mingjie Zhang (mingjie2026@gmail.com)
-
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
 
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const buildConfig = require('./config.json').cppdbg;
+
+function getBuildOptions(projectDir) {
+    const resolveDir = dir => path.resolve(projectDir, dir);
+    return {
+        compileArgs: buildConfig.includeDirs.flatMap(dir => ['-I', resolveDir(dir)]),
+        linkArgs: [
+            ...buildConfig.libraryDirs.flatMap(dir => ['-L', resolveDir(dir)]),
+            ...buildConfig.libraries.map(library => `-l${library}`),
+            ...buildConfig.linkArgs
+        ]
+    };
+}
 
 function replace_cpp(text){
     //-------------------------------------------------------------------------------------
@@ -57,6 +49,9 @@ function replace_shader(text){
 function replace_kernel(text){
     // #include <cuda_...> => #include "kernel.h"
     text = text.replace(/^[ \t]*#[ \t]*include[ \t]*[<"]cuda_[^>"\r\n]*[>"]/gm, '#include "kernel.h"');
+
+    // Use the same CPU declarations for CUDA libraries and Thrust headers.
+    text = text.replace(/^[ \t]*#[ \t]*include[ \t]*[<"](?:cublas[^>"\r\n]*|cusparse[^>"\r\n]*|thrust\/[^>"\r\n]*)[>"]/gm, '#include "kernel.h"');
  
     // #include <device_launch_parameters.h> => #include "kernel.h"
     text = text.replace(/^[ \t]*#[ \t]*include[ \t]*[<"]device_launch_parameters\.h[>"]/gm, '#include "kernel.h"');
@@ -166,7 +161,7 @@ function collectSources(source, visited = new Set()) {
 }
 
 // Generate CPU copies of sources and their local headers without changing the originals.
-function generateCpuFile(source, buildDir, sourceRoot, generated = new Map()) {
+function generateCpuFile(source, buildDir, sourceRoot, generated = new Map(), changedFiles = new Set()) {
     source = path.resolve(source);
     if (generated.has(source)) return generated.get(source);
 
@@ -181,60 +176,99 @@ function generateCpuFile(source, buildDir, sourceRoot, generated = new Map()) {
     code = code.replace(/^(\s*#\s*include\s*)"([^"\r\n]+)"/gm, (match, prefix, header) => {
         const local = path.resolve(path.dirname(source), header);
         if (!fs.existsSync(local) || !fs.statSync(local).isFile()) return match;
-        return prefix + JSON.stringify(generateCpuFile(local, buildDir, sourceRoot, generated));
+        return prefix + JSON.stringify(generateCpuFile(local, buildDir, sourceRoot, generated, changedFiles));
     });
 
     code = replace(code);
     fs.mkdirSync(path.dirname(destination), { recursive: true });
-    fs.writeFileSync(destination, `#line 1 ${JSON.stringify(source)}\n${code}`);
+    const contents = `#line 1 ${JSON.stringify(source)}\n${code}`;
+    if (!fs.existsSync(destination) || fs.readFileSync(destination, 'utf8') !== contents) {
+        fs.writeFileSync(destination, contents);
+        changedFiles.add(source);
+    }
     return destination;
 }
 
+function hasChangedDependency(source, changedFiles, visited = new Set()) {
+    source = path.resolve(source);
+    if (changedFiles.has(source)) return true;
+    if (visited.has(source)) return false;
+    visited.add(source);
+
+    for (const header of discoverHeaders(source)) {
+        const local = path.resolve(path.dirname(source), header);
+        if (fs.existsSync(local) && fs.statSync(local).isFile()
+            && hasChangedDependency(local, changedFiles, visited)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // Compile one C++ source file into an object file.
-function compileSource(source, buildDir, generatedDir) {
+function compileSource(source, buildDir, generatedDir, compileArgs, originalSource, changedFiles) {
     const object = path.join(buildDir, `${path.relative(generatedDir, source)}.o`);
     fs.mkdirSync(path.dirname(object), { recursive: true });
+
+    if (fs.existsSync(object) && !hasChangedDependency(originalSource, changedFiles)) {
+        return { object, compiled: false };
+    }
 
     execFileSync(process.env.CXX || 'g++', [
         '-std=c++17',
         '-g',
         '-x', 'c++', // compile .cu file like .cpp NODELETE
         '-I', __dirname,
+        ...compileArgs,
         '-c',
         source,
         '-o',
         object
     ], { encoding: 'utf8' });
 
-    return object;
+    return { object, compiled: true };
 }
 
 // Link object files into the executable.
-function linkObjects(objects, output) {
+function linkObjects(objects, output, linkArgs) {
     execFileSync(process.env.CXX || 'g++', [
         ...objects,
         '-o',
-        output
+        output,
+        ...linkArgs
     ], { encoding: 'utf8' });
 }
 
 function prepareCpu(entry, buildDir) {
     entry = path.resolve(entry);
-    const programName = path.basename(entry).split('.')[0];
+    const programName = path.basename(entry).replace(/_?\./g, '_');
     buildDir = path.resolve(buildDir);
     
-    const objectDir = path.join(buildDir, 'cppdbg');
-    const generatedDir = path.join(buildDir, 'generated');
+    const objectDir = path.join(buildDir, 'cppdbg'); // object files
+    const generatedDir = path.join(buildDir, 'cppdbg'); // generated source files
+    const programDir = path.join(buildDir, 'cppdbg'); // executable
+
+    const options = getBuildOptions(path.dirname(buildDir));
     fs.mkdirSync(objectDir, { recursive: true });
 
-    const output = path.join(buildDir, programName);
+    const output = path.join(programDir, programName);
     const sources = [...collectSources(entry)];
     const generated = new Map();
-    const objects = sources.map(source =>
-        compileSource(generateCpuFile(source, generatedDir, path.dirname(entry), generated), objectDir, generatedDir)
+    const changedFiles = new Set();
+    const generatedSources = sources.map(source =>
+        generateCpuFile(source, generatedDir, path.dirname(entry), generated, changedFiles)
     );
-        
-    linkObjects(objects, output);
+    const compileResults = generatedSources.map((source, index) =>
+        compileSource(source, objectDir, generatedDir, options.compileArgs, sources[index], changedFiles)
+    );
+
+    if (!compileResults.some(result => result.compiled) && fs.existsSync(output)) {
+        return output;
+    }
+
+    const objects = compileResults.map(result => result.object);
+    linkObjects(objects, output, options.linkArgs);
 
     return output;
 }

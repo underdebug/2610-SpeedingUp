@@ -1,28 +1,21 @@
 // MIT License
 
-// Copyright (c) 2026 Mingjie Zhang (mingjie2026@gmail.com)
-
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
-
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const buildConfig = require('./config.json')['cuda-gdb'];
+
+function getBuildOptions(projectDir) {
+    const resolveDir = dir => path.resolve(projectDir, dir);
+    return {
+        compileArgs: buildConfig.includeDirs.flatMap(dir => ['-I', resolveDir(dir)]),
+        linkArgs: [
+            ...buildConfig.libraryDirs.flatMap(dir => ['-L', resolveDir(dir)]),
+            ...buildConfig.libraries.map(library => `-l${library}`),
+            ...buildConfig.linkArgs
+        ]
+    };
+}
 
 // Read local quoted header references from a C++ source file.
 function discoverHeaders(source) {
@@ -73,44 +66,112 @@ function collectSources(source, visited = new Set()) {
     return visited;
 }
 
+// Generate copies of sources and local headers while keeping debug locations in the originals.
+function generateGpuFile(source, buildDir, sourceRoot, generated = new Map(), changedFiles = new Set()) {
+    source = path.resolve(source);
+    if (generated.has(source)) return generated.get(source);
+
+    let relative = path.relative(sourceRoot, source);
+    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+        relative = path.join('__external__', source.replace(/^([A-Za-z]:)?[/\\]+/, ''));
+    }
+    const destination = path.join(buildDir, relative);
+    generated.set(source, destination);
+
+    let code = fs.readFileSync(source, 'utf8');
+    code = code.replace(/^(\s*#\s*include\s*)"([^"\r\n]+)"/gm, (match, prefix, header) => {
+        const local = path.resolve(path.dirname(source), header);
+        if (!fs.existsSync(local) || !fs.statSync(local).isFile()) return match;
+        return prefix + JSON.stringify(generateGpuFile(local, buildDir, sourceRoot, generated, changedFiles));
+    });
+
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    const contents = `#line 1 ${JSON.stringify(source)}\n${code}`;
+    if (!fs.existsSync(destination) || fs.readFileSync(destination, 'utf8') !== contents) {
+        fs.writeFileSync(destination, contents);
+        changedFiles.add(source);
+    }
+    return destination;
+}
+
+function hasChangedDependency(source, changedFiles, visited = new Set()) {
+    source = path.resolve(source);
+    if (changedFiles.has(source)) return true;
+    if (visited.has(source)) return false;
+    visited.add(source);
+
+    for (const header of discoverHeaders(source)) {
+        const local = path.resolve(path.dirname(source), header);
+        if (fs.existsSync(local) && fs.statSync(local).isFile()
+            && hasChangedDependency(local, changedFiles, visited)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // Compile one CUDA or C++ source file into an object file.
-function compileSource(source, buildDir) {
-    const object = path.join(buildDir, `${path.basename(source, path.extname(source))}.o`);
+function compileSource(source, buildDir, generatedDir, compileArgs, originalSource, changedFiles) {
+    const object = path.join(buildDir, `${path.relative(generatedDir, source)}.o`);
+    fs.mkdirSync(path.dirname(object), { recursive: true });
+
+    if (fs.existsSync(object) && !hasChangedDependency(originalSource, changedFiles)) {
+        return { object, compiled: false };
+    }
 
     execFileSync(process.env.NVCC || 'nvcc', [
         '-g',
         '-G',
+        ...compileArgs,
         '-c',
         source,
         '-o',
         object
     ], { stdio: 'inherit' });
 
-    return object;
+    return { object, compiled: true };
 }
 
 // Link object files into the executable.
-function linkObjects(objects, output) {
+function linkObjects(objects, output, linkArgs) {
     execFileSync(process.env.NVCC || 'nvcc', [
         ...objects,
         '-o',
-        output
+        output,
+        ...linkArgs
     ], { stdio: 'inherit' });
 }
 
 function prepareGpu(entry, buildDir) {
     entry = path.resolve(entry);
-    const programName = path.basename(entry).split('.')[0];
+    const programName = path.basename(entry).replace(/_?\./g, '_');
     buildDir = path.resolve(buildDir);
-    const objectDir = path.join(buildDir, 'cuda-gdb');
 
+    const objectDir = path.join(buildDir, 'cuda-gdb'); // object files
+    const generatedDir = path.join(buildDir, 'cuda-gdb'); // generated source files
+    const programDir = path.join(buildDir, 'cuda-gdb'); // executable
+
+    const options = getBuildOptions(path.dirname(buildDir));
     fs.mkdirSync(objectDir, { recursive: true });
 
     const sources = [...collectSources(entry)];
-    const objects = sources.map(source => compileSource(source, objectDir));
-    const output = path.join(buildDir, programName);
+    const generated = new Map();
+    const changedFiles = new Set();
+    const generatedSources = sources.map(source =>
+        generateGpuFile(source, generatedDir, path.dirname(entry), generated, changedFiles)
+    );
+    const compileResults = generatedSources.map((source, index) =>
+        compileSource(source, objectDir, generatedDir, options.compileArgs, sources[index], changedFiles)
+    );
+    const output = path.join(programDir, programName);
 
-    linkObjects(objects, output);
+    if (!compileResults.some(result => result.compiled) && fs.existsSync(output)) {
+        return output;
+    }
+
+    const objects = compileResults.map(result => result.object);
+    linkObjects(objects, output, options.linkArgs);
 
     return output;
 }

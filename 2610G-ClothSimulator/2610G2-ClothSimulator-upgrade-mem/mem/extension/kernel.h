@@ -3,9 +3,34 @@
 
 #include <cmath>
 #include <cstddef>
+#include <algorithm>
+#include <vector>
 
 #define __constant__
 #define __global__
+#define __host__
+#define __device__
+
+struct cudaGraphicsResource;
+
+// CPU counterparts for the CUDA library declarations used by replayed code.
+using cudaError_t = int;
+using cublasStatus_t = int;
+using cusparseStatus_t = int;
+using cublasHandle_t = void*;
+using cusparseHandle_t = void*;
+
+namespace thrust {
+template<class T, class Allocator = std::allocator<T>>
+class device_vector : public std::vector<T, Allocator> {
+public:
+    using std::vector<T, Allocator>::vector;
+};
+template<class T, class Allocator = std::allocator<T>>
+using host_vector = std::vector<T, Allocator>;
+template<class T> T* raw_pointer_cast(T* pointer) { return pointer; }
+using std::remove;
+}
 
 struct float2 { float x, y; };
 inline float2 make_float2(float x, float y) { return {x, y}; }
@@ -21,14 +46,13 @@ struct dim3 {
         z *= dim.z;
         return *this;
     }
-
     dim3 operator / (const int div) const
     {
         return dim3(x / div, y / div, z / div);
     }
 };
 
-inline thread_local dim3 blockDim, blockIdx, threadIdx;
+inline thread_local dim3 gridDim, blockDim, blockIdx, threadIdx;
 template<class F> void run_kernel(dim3 grid, dim3 block, F function) {
     const dim3 blockDimOld = blockDim, blockIdxOld = blockIdx, threadIdxOld = threadIdx;
     blockDim = block;
