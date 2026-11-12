@@ -82,7 +82,7 @@ function log(...args) {
 
 async function printStack(session) {
     const editor = vscode.window.activeTextEditor;
-    const line = editor.selection.active.line + 1;
+    const line = editor ? editor.selection.active.line + 1 : '?';
 
     let stack;
     try {
@@ -94,22 +94,26 @@ async function printStack(session) {
         if (session.type === 'cuda-gdb') {
             const script = [
                 'import gdb',
+                'import os',
                 'frame = gdb.newest_frame()',
                 'names = []',
-                'for index in range(4):',
+                'for index in range(3):',
                 '    if frame is None:',
                 '        break',
-                "    names.append((frame.name() or '??').split('(', 1)[0].strip())",
-                '    if index < 3:',
-                '        frame = frame.older()',
-                `print(${line}, ' <-- '.join(names) or '(no stack)')`
+                "    name = (frame.name() or '').strip()",
+                "    name = name.replace('(anonymous namespace)::', '').split('(', 1)[0].strip().rsplit('::', 1)[-1] or '??'",
+                '    symtab = frame.find_sal().symtab',
+                "    source = os.path.basename(symtab.filename) if symtab else ''",
+                "    names.append(name + '.' + source if source else name)",
+                '    frame = frame.older()',
+                `print(${JSON.stringify(line)}, ' <-- '.join(names) or '(no stack)')`
             ].join('\n');
             const response = await session.customRequest('evaluate', {
                 expression: `-exec python exec(${JSON.stringify(script)}, {})`,
                 context: 'repl'
             });
             if (response && response.result) {
-                log(response.result);
+                vscode.debug.activeDebugConsole.appendLine(response.result);
             }
             return;
         }
@@ -118,16 +122,23 @@ async function printStack(session) {
             threadId = response.threads && response.threads[0] && response.threads[0].id;
         }
         if (threadId === undefined) {
-            log("printStack, threadId === undefined, Error");
+            stack = '(no thread)';
         } else {
             const response = await session.customRequest('stackTrace', {
                 threadId,
                 startFrame: 0,
-                levels: 4
+                levels: 3
             });
-            stack = (response.stackFrames || []).slice(0, 4)
-                .map(frame => frame.name.replace(/\(.*$/, '').trim())
-                .join(' <-- ');
+            stack = (response.stackFrames || []).slice(0, 3)
+                .map(frame => {
+                    const name = (frame.name || '').trim();
+                    const shortName = name.replace(/\(anonymous namespace\)::/g, '')
+                        .replace(/\(.*$/, '').trim().split('::').pop() || '??';
+                    const source = frame.source && (frame.source.name || frame.source.path);
+                    const file = source ? path.basename(source.replace(/\\/g, '/')) : '';
+                    return file ? `${shortName}.${file}` : shortName;
+                })
+                .join(' <-- ') || '(no stack)';
         }
         vscode.debug.activeDebugConsole.appendLine(`${line} ${stack}`);
     } catch (e) {
@@ -182,10 +193,13 @@ async function initialMem(session) {
     const frameId = await getFrameId(session);
     LOG && log('initialMem', 'getFrameId', frameId);
 
-    const PROJECT_PATH = await getProjectPath();
-    const EXTENSION_PATH = __dirname;
+    const PROJECT_PATH = session.workspaceFolder?.uri.fsPath || await getProjectPath();
+    const projectMem = path.join(PROJECT_PATH, 'mem', 'extension', 'mem.py');
+    const installedMem = path.join(__dirname, 'mem.py');
+    const memPath = fs.existsSync(projectMem) && fs.statSync(projectMem).isFile()
+        ? projectMem : installedMem;
 
-    const expr = `-exec python import os, sys, importlib.util; PROJECT_PATH=${JSON.stringify(PROJECT_PATH)}; os.environ['PROJECT_PATH']=PROJECT_PATH; spec=importlib.util.spec_from_file_location('mem', os.path.join(${JSON.stringify(EXTENSION_PATH)}, 'mem.py')); mem=importlib.util.module_from_spec(spec); sys.modules['mem']=mem; spec.loader.exec_module(mem); from mem import *;`; // NOMODIFY, NODELETE
+    const expr = `-exec python import os, sys, importlib.util; PROJECT_PATH=${JSON.stringify(PROJECT_PATH)}; os.environ['PROJECT_PATH']=PROJECT_PATH; spec=importlib.util.spec_from_file_location('mem', ${JSON.stringify(memPath)}); mem=importlib.util.module_from_spec(spec); sys.modules['mem']=mem; spec.loader.exec_module(mem); from mem import *;`; // NOMODIFY, NODELETE
     LOG && log('initialMem', expr);
 
     try {

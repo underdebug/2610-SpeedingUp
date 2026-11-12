@@ -19,13 +19,26 @@ np.set_printoptions(formatter={
     'float_kind': lambda x: f'{x:8.3f}',
     'int_kind': lambda x: f'{x:3d}',
 })
+
+def format_value(value):
+    if isinstance(value, (float, np.floating)):
+        return f'{value:.3f}'
+    if isinstance(value, dict):
+        return '{' + ', '.join(f'{key!r}: {format_value(val)}'
+                               for key, val in value.items()) + '}'
+    if isinstance(value, (list, tuple)):
+        items = ', '.join(format_value(item) for item in value)
+        if isinstance(value, tuple):
+            return '(' + items + (',' if len(value) == 1 else '') + ')'
+        return '[' + items + ']'
+    if isinstance(value, np.generic):
+        return repr(value.item())
+    return str(value) if isinstance(value, np.ndarray) else repr(value)
+
 def printf(value, name, line):
-    try:
-        dimensions = np.shape(value)
-    except (TypeError, ValueError):
-        dimensions = ()
+    dimensions = np.shape(value)
     shape = '[' + ','.join(map(str, dimensions)) + ']' if dimensions else ''
-    print(value, '<--', name, shape, f'|{line}|')
+    print(format_value(value), '<--', name, shape, f'|{line}|')
 
 PROJECT_PATH = os.environ.get('PROJECT_PATH')
 if PROJECT_PATH:              PATH = os.path.join(os.path.abspath(PROJECT_PATH), 'mem')
