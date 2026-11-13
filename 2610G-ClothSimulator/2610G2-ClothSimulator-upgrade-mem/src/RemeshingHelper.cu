@@ -445,8 +445,6 @@ __global__ void flipGpu(int nEdges, const Edge* const* edges, const Material* ma
         addedFaces[2 * i + 1] = newFace1;
         removedFaces[2 * i] = face0;
         removedFaces[2 * i + 1] = face1;
-
-        // -exec source RemeshingHelper.cu_.py flipGpu2 Agg
     }
 }
 
