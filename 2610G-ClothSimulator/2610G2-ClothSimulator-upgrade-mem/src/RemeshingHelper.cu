@@ -421,6 +421,8 @@ __global__ void flipGpu(int nEdges, const Edge* const* edges, const Material* ma
         Edge* edge2 = face1->findEdge(vertex0, vertex3);
         Edge* edge3 = face1->findEdge(vertex3, vertex1);
 
+        // -exec source RemeshingHelper.cu_.py flipGpu Agg
+
         Edge* newEdge = &edgePool[i];
         *newEdge = Edge(vertex2->node, vertex3->node);
         Face* newFace0 = &facePool[2 * i];
@@ -443,6 +445,8 @@ __global__ void flipGpu(int nEdges, const Edge* const* edges, const Material* ma
         addedFaces[2 * i + 1] = newFace1;
         removedFaces[2 * i] = face0;
         removedFaces[2 * i + 1] = face1;
+
+        // -exec source RemeshingHelper.cu_.py flipGpu2 Agg
     }
 }
 

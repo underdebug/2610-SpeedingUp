@@ -263,3 +263,150 @@ def faceSizing(Agg="Agg"):
     else:
         plt.close(fig)
     return fig, ax
+
+def flipGpu(Agg="Agg"):
+    """Plot the current flipGpu frame after the findEdge calls.
+
+    Run: -exec source RemeshingHelper.cu_.py flipGpu Agg
+    """
+    if Agg not in ("Agg", "QtAgg"):
+        raise ValueError("Display argument must be Agg or QtAgg")
+
+    def read(expression):
+        value = mem(expression)
+        if value is None:
+            raise ValueError(f"Cannot read {expression}; pause after the findEdge calls in flipGpu")
+        if isinstance(value, dict):
+            if "data" not in value:
+                raise ValueError(f"Unexpected value for {expression}: {list(value)}")
+            value = value["data"]
+        return np.asarray(value)
+
+    def pointer(expression):
+        # mem() dereferences pointers to structs, returning their fields instead
+        # of the address. Evaluate the pointer itself in the selected frame.
+        import gdb
+        try:
+            return int(gdb.parse_and_eval(expression))
+        except (gdb.error, RuntimeError, ValueError) as exc:
+            raise ValueError(f"Cannot read pointer {expression}; pause after the findEdge calls in flipGpu") from exc
+
+    statements = [
+        ("Vertex* vertex0 = edge->vertices[0][0];", "vertex0"),
+        ("Vertex* vertex1 = edge->vertices[1][1];", "vertex1"),
+        ("Vertex* vertex2 = edge->opposites[0];", "vertex2"),
+        ("Vertex* vertex3 = edge->opposites[1];", "vertex3"),
+        ("Face* face0 = edge->adjacents[0];", "face0"),
+        ("Face* face1 = edge->adjacents[1];", "face1"),
+        ("Edge* edge0 = face0->findEdge(vertex1, vertex2);", "edge0"),
+        ("Edge* edge1 = face0->findEdge(vertex2, vertex0);", "edge1"),
+        ("Edge* edge2 = face1->findEdge(vertex0, vertex3);", "edge2"),
+        ("Edge* edge3 = face1->findEdge(vertex3, vertex1);", "edge3"),
+    ]
+    values = {name: pointer(name) for _, name in statements}
+    if any(not values[f"vertex{i}"] for i in range(4)) or any(
+            not values[f"face{i}"] for i in range(2)):
+        raise ValueError("A vertex or face is null; flipGpu requires two complete adjacent faces")
+
+    import matplotlib
+    matplotlib.use(Agg)
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Polygon
+
+    fig, (ax, panel) = plt.subplots(1, 2, figsize=(17, 9),
+                                    gridspec_kw={"width_ratios": [1, 1.25]})
+    panel.axis("off")
+    names = {values[f"vertex{i}"]: f"vertex{i}" for i in range(4)}
+    positions, indices = {}, {}
+    for i in range(4):
+        name = f"vertex{i}"
+        positions[values[name]] = read(f"{name}->u").astype(float).reshape(2)
+        indices[values[name]] = int(read(f"{name}->index").item())
+    face_vertices = []
+    for i in range(2):
+        vertices = [pointer(f"face{i}->vertices[{j}]") for j in range(3)]
+        face_vertices.append(vertices)
+        for j, ptr in enumerate(vertices):
+            if not ptr:
+                raise ValueError(f"face{i}->vertices[{j}] is null")
+            if ptr not in positions:
+                positions[ptr] = read(f"face{i}->vertices[{j}]->u").astype(float).reshape(2)
+                indices[ptr] = int(read(f"face{i}->vertices[{j}]->index").item())
+                names[ptr] = f"face{i}.vertex{j}"
+        coords = np.array([positions[ptr] for ptr in vertices])
+        if not np.isfinite(coords).all():
+            raise ValueError("Vertex UV coordinates contain nonfinite values")
+        ax.add_patch(Polygon(coords, closed=True, facecolor=("#95c9f0", "#ffc688")[i],
+                             edgecolor="none", alpha=0.55))
+        ax.annotate(f"face{i}", coords.mean(axis=0), ha="center", fontsize=11, weight="bold")
+
+    edge_names = {pointer("edge"): "edge (flip)"}
+    edge_names.update({values[f"edge{i}"]: f"edge{i}" for i in range(4)
+                       if values[f"edge{i}"]})
+    drawn = set()
+    for i, vertices in enumerate(face_vertices):
+        for j, start in enumerate(vertices):
+            end = vertices[(j + 1) % 3]
+            ptr = pointer(f"face{i}->edges[{j}]")
+            key = (ptr, min(start, end), max(start, end))
+            if key in drawn:
+                continue
+            drawn.add(key)
+            a, b = positions[start], positions[end]
+            label = edge_names.get(ptr, f"face{i}.edge{j}" if ptr else "null edge")
+            ax.plot([a[0], b[0]], [a[1], b[1]], color="#333333", linewidth=2)
+            ax.annotate(label, (a + b) / 2, xytext=(0, 5), textcoords="offset points",
+                        ha="center", fontsize=9, color="#5a2580",
+                        bbox=dict(facecolor="white", alpha=0.75, edgecolor="none", pad=1))
+    for ptr, pos in positions.items():
+        ax.scatter(*pos, color="crimson", zorder=3)
+        ax.annotate(f"{names[ptr]} (index {indices[ptr]})", pos,
+                    xytext=(5, 6), textcoords="offset points", fontsize=9, color="crimson")
+    ax.autoscale_view()
+    ax.margins(0.2)
+    ax.set_aspect("equal", adjustable="box")
+    ax.set(xlabel="u", ylabel="v", title="flipGpu: adjacent faces in UV space")
+    ax.grid(alpha=0.25)
+
+    lines = ["C++ statement and pointer value", ""]
+    for statement, name in statements:
+        value = f"0x{values[name]:x}" if values[name] else "nullptr"
+        lines.extend([statement, f"    {name} = {value}"])
+    lines += ["", "edge->vertices entries"]
+    for row in range(2):
+        for column in range(2):
+            expression = f"edge->vertices[{row}][{column}]"
+            ptr = pointer(expression)
+            if ptr:
+                index = int(read(f"{expression}->index").item())
+                lines.append(f"{expression} = 0x{ptr:x} (index {index})")
+            else:
+                lines.append(f"{expression} = nullptr")
+    lines += ["", "Vertex indices and UV coordinates"]
+    for i in range(4):
+        ptr = values[f"vertex{i}"]
+        lines.append(f"vertex{i}: index {indices[ptr]}, u = {np.array2string(positions[ptr], precision=5)}")
+    lines += ["", "Expected faces: (vertex0, vertex1, vertex2)",
+              "                (vertex0, vertex1, vertex3)"]
+    for i, expected in enumerate(((0, 1, 2), (0, 1, 3))):
+        status = "OK" if set(face_vertices[i]) == {values[f"vertex{j}"] for j in expected} else "MISMATCH"
+        lines.append(f"face{i} vertex pointers: {status}")
+    if any(not values[f"edge{i}"] for i in range(4)):
+        lines.append("A findEdge result is null; subsequent code dereferences it.")
+    panel.text(0, 1, "\n".join(lines), va="top", family="monospace", fontsize=7.5)
+    fig.tight_layout()
+    output = Path(__file__).resolve().parent.parent / "mem/figure/flipGpu.png"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=150)
+    print(f"Saved flipGpu plot: {output}")
+    if Agg == "QtAgg":
+        plt.show(block=True)
+    else:
+        plt.close(fig)
+        import subprocess
+        try:
+            subprocess.Popen(["xdg-open", str(output)], stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError as exc:
+            print(f"Could not open flipGpu plot: {exc}")
+    return fig, ax
