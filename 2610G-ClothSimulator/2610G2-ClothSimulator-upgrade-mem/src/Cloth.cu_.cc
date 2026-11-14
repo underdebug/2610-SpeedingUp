@@ -2,7 +2,7 @@
 #include "kernel.h"
 #include "Cloth.cuh"
 
-int Main() {
+int main() {
     printf("hello mingjie!");
     return 0;
 }

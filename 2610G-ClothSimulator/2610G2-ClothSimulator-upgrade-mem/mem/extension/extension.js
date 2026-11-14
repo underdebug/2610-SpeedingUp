@@ -737,7 +737,9 @@ async function createKernelGpuTest(sourcefile, testfile) {
 function isTestFile(filename) {
     if (isShaderFile(filename)) return false;
     const contents = fs.readFileSync(filename, 'utf8');
-    return contents.includes('main(') || contents.includes('Main(');
+    
+    // Match main( regardless of letter case.
+    return /main\(/i.test(contents);
 }
 
 async function debugCppDbg(source) {

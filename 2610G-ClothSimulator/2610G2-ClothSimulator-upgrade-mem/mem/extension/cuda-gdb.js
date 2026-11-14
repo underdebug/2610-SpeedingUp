@@ -30,8 +30,8 @@ function replace_cpp(text){
     //    more */ + b               ·········· + b
     text = text.replace(/\/\*[\s\S]*?\*\//g, value => value.replace(/[^\r\n]/g, ' '));
 
-    // Change MAIN( to main(
-    text = text.replace(/\bMain(?=\s*\()/g, 'main');
+    // Normalize the case of main function names.
+    text = text.replace(/\bmain(?=\s*\()/gi, 'main');
     return text;
 }
 
@@ -44,7 +44,7 @@ function replace_shader(text){
     text = text.replace(/^[ \t]*#version\b[^\r\n]*/, '#include "shader.h"');
 
     // main() => Shader().
-    text = text.replace(/\bmain\s*\(\s*\)/g, 'Shader()');
+    text = text.replace(/\bmain\s*\(\s*\)/g, 'shader()');
     return text;
 }
 
