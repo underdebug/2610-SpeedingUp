@@ -15,12 +15,12 @@
 
 #define IDX2C(i,j,ld) (((j)*(ld))+(i))
 
-// #define FUNC_TEST
+#define FUNC_TEST
 // #define PROJECTION_TEST
 // #define INVERSION_TEST
 // #define CUBLAS_TEST 
 // #define CUBLAS_NURBS_TEST
-#define CUBLAS_PERF_TEST
+//#define CUBLAS_PERF_TEST
 // #define RANDOM_ACCESS
 // #define GPU_PRO
 
@@ -144,6 +144,7 @@ int main() {
 	//cin >> file_name;
 
 	readNu(file_name, degree_u, degree_v, cp_u, cp_v, knots_u, knots_v, control_points, weights);
+    // -exec source main.cu_.py control_points QtAgg
 
 	//double max_length;
 	//cout << "Input max edge length: " << endl;

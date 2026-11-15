@@ -2,22 +2,12 @@
 const vscode = require('vscode');
 const jsonc = require('./jsonc-parser');
 
-async function openIfExists(uri) {
-    try {
-        await vscode.workspace.fs.stat(uri);
-    } catch (error) {
-        if (error.code === 'FileNotFound') return undefined;
-        throw error;
-    }
-    return vscode.workspace.openTextDocument(uri);
-}
-
 async function setLaunchJson() {
     if (!vscode.workspace.workspaceFolders?.length) return;
 
     const directory = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, '.vscode');
     const uri = vscode.Uri.joinPath(directory, 'launch.json');
-    const document = await openIfExists(uri);
+    const document = await vscode.workspace.openTextDocument(uri);
     const original = document ? document.getText() : '{}\n';
     const errors = [];
     const current = jsonc.parse(original.trim() ? original : '{}', errors, { allowTrailingComma: true });
@@ -105,7 +95,7 @@ async function setSettingJson() {
 
     const directory = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, '.vscode');
     const uri = vscode.Uri.joinPath(directory, 'settings.json');
-    const document = await openIfExists(uri);
+    const document = await vscode.workspace.openTextDocument(uri);
     const original = document ? document.getText() : '{}\n';
     const errors = [];
     const current = jsonc.parse(original.trim() ? original : '{}', errors, { allowTrailingComma: true });

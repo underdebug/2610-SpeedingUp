@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug NURBS with CUDA-GDB",
+      "name": "Debug NURBS with CPPDBG",
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/NURBS",
@@ -11,6 +11,17 @@
       "stopAtEntry": false,
       "externalConsole": false,
       "MIMode": "gdb",
+      "miDebuggerPath": "/usr/local/cuda/bin/cuda-gdb",
+        "internalConsoleOptions": "openOnSessionStart"
+    },
+    {
+      "name": "Debug NURBS with CUDA-GDB",
+      "type": "cuda-gdb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/NURBS",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
       "miDebuggerPath": "/usr/local/cuda/bin/cuda-gdb",
         "internalConsoleOptions": "openOnSessionStart"
     }

@@ -363,6 +363,21 @@ def cpu_Eigen_Matrix(para, Type, Size):
 
     return cpu_memory(Addr, Type, Size)
 
+def cpu_buffer_size(Addr):
+    if not Addr:
+        return 0
+
+    try:
+        expr = (
+            f'((size_t (*)(void*))malloc_usable_size)'
+            f'((void*){int(Addr)})'
+        )
+
+        return int(gdb.parse_and_eval(expr))
+
+    except gdb.error:
+        return 0
+
 def cpu_(para, Type=None, Size=None):
     ftype = para.type.strip_typedefs()
  
@@ -383,13 +398,24 @@ def cpu_(para, Type=None, Size=None):
         target_type = ftype.target().strip_typedefs().unqualified()
         if LOG: PRINT('target_type.code', target_type.code)
 
-        if target_type.code == gdb.TYPE_CODE_STRUCT:
-            if LOG: PRINT('ftype.code == gdb.TYPE_CODE_PTR, target_type.code == gdb.TYPE_CODE_STRUCT ')
+        if target_type.code == gdb.TYPE_CODE_STRUCT: # 3
+            if LOG: PRINT('TYPE_CODE_PTR TYPE_CODE_STRUCT', 'Type', Type, 'Size', Size)
             if Type is not None and Size is not None:
+                if LOG: PRINT('cpu_memory force Type', Type, 'Size', Size)
                 return cpu_memory(int(para), Type, Size)
 
             if Size is None:
-                return cpu_(para.dereference(), Type)
+                if LOG: PRINT('cpu_memory cpu_(para.dereference() Type', Type)
+
+                Addr = int(para)
+                Size = cpu_buffer_size(Addr)
+                print('cpu_buffer_size Size', Size)
+
+                target = gdb.lookup_type(str(target_type))   
+                Size = int(Size / target.sizeof) 
+                if LOG: PRINT('TYPE_CODE_PTR TYPE_CODE_STRUCT', 'Type', Type, 'Size New', Size)
+
+                return [cpu_((para + i).dereference(), Type) for i in range(Size)]
 
             Size_t = math.prod(int(n) for n in np.atleast_1d(Size))
             results = []
@@ -398,12 +424,12 @@ def cpu_(para, Type=None, Size=None):
                 results.append(result)
             return results
         else:
+            if LOG: PRINT('TYPE_CODE_PTR !TYPE_CODE_STRUCT', 'Addr', Addr, 'Type', Type, 'Size', Size)
             Addr = int(para)
             if Type is None:
                 if LOG: PRINT('TYPE_CODE_PTR !TYPE_CODE_STRUCT', 'Type Old', Type, 'Type New', str(target_type))
                 Type = str(target_type)
 
-            if LOG: PRINT('TYPE_CODE_PTR !TYPE_CODE_STRUCT', 'Addr', Addr, 'Type', Type, 'Size', Size)
             return cpu_memory(Addr, Type, Size)
 
     elif ftype.code == gdb.TYPE_CODE_ARRAY: # 2
@@ -923,7 +949,6 @@ def is_device_pointer(Name):
         return 2
 
 def shrink(data):
-    """Recursively unwrap single-entry dictionaries without changing values."""
     while isinstance(data, dict) and len(data) == 1:
         data = next(iter(data.values()))
     if isinstance(data, dict):
@@ -939,9 +964,10 @@ def shrink(data):
 def mem_(Name, Type=None, Size=None, Step=1):
     if isinstance(Type, str) and Type == '':
         Type = None
-    if isinstance(Size, str):
-        if Size == '': Size = None
-        else: Size = mem(Size)
+    if isinstance(Size, str) and Size:
+        Size = mem(Size)
+    if (isinstance(Size, str) and Size == '') or (isinstance(Size, list) and not Size):
+        Size = None
 
     expression = Name.strip().rstrip(';').rstrip()
     if '(' in expression:

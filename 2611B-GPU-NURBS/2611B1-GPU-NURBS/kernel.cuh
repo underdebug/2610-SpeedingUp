@@ -18,7 +18,7 @@ constexpr int PointsPerEdge = GapPerEdge + 1;
 constexpr int ChildrenNumber = GapPerEdge * GapPerEdge;
 constexpr int PointsPerBlock = PointsPerEdge * PointsPerEdge;
 // moved from main.cu
-constexpr int DataSize = 65536 * 512;
+constexpr int DataSize = 1; //65536 * 512;
 #undef BLOCK_SIZE // Evaluate.cuh defines a separate block size.
 constexpr int BLOCK_SIZE = 16;
 constexpr int TreeArraySize = 1 + ChildrenNumber + ChildrenNumber * ChildrenNumber + ChildrenNumber * ChildrenNumber * ChildrenNumber; // 4 layers
