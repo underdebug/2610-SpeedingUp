@@ -1,0 +1,33 @@
+{
+  "cmake.generator": "Unix Makefiles",
+  "cmake.buildDirectory": "${workspaceFolder}/build",
+  "cmake.configureEnvironment": {
+    "CUDACXX": "/usr/local/cuda/bin/nvcc"
+  },
+  "cmake.configureSettings": {
+    "CMAKE_CUDA_COMPILER": "/usr/local/cuda/bin/nvcc",
+    "CMAKE_CUDA_ARCHITECTURES": "86",
+    "CUDAToolkit_ROOT": "/usr/local/cuda",
+    "CMAKE_PREFIX_PATH": "/usr/local/cuda/targets/x86_64-linux"
+  },
+  "debug.allowBreakpointsEverywhere": true,
+    "chat.disableAIFeatures": false,
+    "C_Cpp.errorSquiggles": "disabled",
+    "debug.console.collapseIdenticalLines": false,
+    "debug.openDebug": "neverOpen",
+    "debug.console.wordWrap": false,
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "editor.detectIndentation": false,
+    "files.associations": {
+        "*.vert": "cpp",
+        "*.frag": "cpp",
+        "*.comp": "cpp",
+        "*.glsl": "cpp"
+    },
+    "[javascript][json]": {
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true,
+        "editor.detectIndentation": false
+    }
+}
