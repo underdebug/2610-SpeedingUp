@@ -1,5 +1,5 @@
 
-LOG = 1 # 10/29 2026
+LOG = 0 # 11/15 2026
 
 import gdb
 import subprocess
@@ -419,7 +419,7 @@ def cpu_(para, Type=None, Size=None):
 
                 Addr = int(para)
                 Size = cpu_buffer_size(Addr)
-                print('cpu_buffer_size Size', Size)
+                if LOG: PRINT('cpu_buffer_size Size', Size)
 
                 target = gdb.lookup_type(str(target_type))   
                 Size = int(Size / target.sizeof) 

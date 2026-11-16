@@ -1,3 +1,4 @@
+// make code with google c++ standard
 
 LOG = 0; // 10/29 2026
 
@@ -90,8 +91,6 @@ async function printStack(session) {
         LOG && log('printStack', line);
         const item = vscode.debug.activeStackItem;
         let threadId = item && item.session === session ? item.threadId : undefined;
-        // Read CUDA-GDB's current stack without selecting a DAP host thread
-        // or frame, which would replace the device focus before reading locals.
         if (session.type === 'cuda-gdb') {
             const script = [
                 'import gdb',
@@ -109,11 +108,13 @@ async function printStack(session) {
                 '    frame = frame.older()',
                 `print(${JSON.stringify(line)}, ' <-- '.join(names) or '(no stack)')`
             ].join('\n');
+
             const response = await session.customRequest('evaluate', {
                 expression: `-exec python exec(${JSON.stringify(script)}, {})`,
                 context: 'repl'
             });
-            if (response && response.result) {
+
+            if (LOG && response && response.result) {
                 vscode.debug.activeDebugConsole.appendLine(response.result);
             }
             return;
@@ -194,13 +195,12 @@ async function initialMem(session) {
     const frameId = await getFrameId(session);
     LOG && log('initialMem', 'getFrameId', frameId);
 
-    const PROJECT_PATH = session.workspaceFolder?.uri.fsPath || await getProjectPath();
-    const projectMem = path.join(PROJECT_PATH, 'mem', 'extension', 'mem.py');
-    const installedMem = path.join(__dirname, 'mem.py');
-    const memPath = fs.existsSync(projectMem) && fs.statSync(projectMem).isFile()
-        ? projectMem : installedMem;
+    let PROJECT_PATH = await getProjectPath();
+    const projectMemDir = path.join(PROJECT_PATH, 'mem', 'extension');
+    const projectMem = path.join(projectMemDir, 'mem.py');
+    let MEM_PATH = fs.existsSync(projectMem) ? projectMemDir : __dirname;
 
-    const expr = `-exec python import os, sys, importlib.util; PROJECT_PATH=${JSON.stringify(PROJECT_PATH)}; os.environ['PROJECT_PATH']=PROJECT_PATH; spec=importlib.util.spec_from_file_location('mem', ${JSON.stringify(memPath)}); mem=importlib.util.module_from_spec(spec); sys.modules['mem']=mem; spec.loader.exec_module(mem); from mem import *;`; // NOMODIFY, NODELETE
+    const expr = `-exec python import os, sys; sys.path.insert(0, ${JSON.stringify(MEM_PATH)}); os.environ['PROJECT_PATH']=${JSON.stringify(PROJECT_PATH)}; import importlib, mem; importlib.reload(mem); from mem import *;`;
     LOG && log('initialMem', expr);
 
     try {
@@ -209,7 +209,8 @@ async function initialMem(session) {
             context: 'repl',
             frameId: frameId
         });
-        if (response && response.result) {
+        
+        if (LOG && response && response.result) {
             vscode.debug.activeDebugConsole.appendLine(response.result);
         }
     } catch (e) {
@@ -312,7 +313,7 @@ async function runExec_source(session, sourceText) {
         frameId: frameId
     });
 
-    if (response && response.result) {
+    if (LOG && response && response.result) {
         log(response.result);
     }
 
@@ -356,7 +357,7 @@ async function runExec(text) {
             context: 'repl',
             frameId: frameId
         });
-        if (response && response.result) {
+        if (LOG && response && response.result) {
             vscode.debug.activeDebugConsole.appendLine(response.result);
         }
     }
@@ -495,11 +496,9 @@ async function memCppPython(session) {
         LOG && log('memCppPython', 'editor.document.getText(editor.selection)', text);
     }
 
-    // Keep the Python source intact and avoid passing its quotes and newlines
-    // through the debugger adapter's command parser.
-    const encoded = Buffer.from(text, 'utf8').toString('base64');
-    const expr = `-exec python exec(__import__('base64').b64decode('${encoded}'))`;
-    LOG && log('memCppPython', expr);
+    const expression = text;
+    const expr = `-exec python exec(${JSON.stringify(expression)})`;
+    LOG && vscode.debug.activeDebugConsole.appendLine(text);
 
     try {
         const response = await session.customRequest('evaluate', {
@@ -507,11 +506,11 @@ async function memCppPython(session) {
             context: 'repl',
             frameId: frameId
         });
-        if (response && typeof response.result === 'string' && response.result.length > 0) {
+        if (LOG && response && response.result) {
             vscode.debug.activeDebugConsole.appendLine(response.result);
         }
     } catch (e) {
-        log('Error memCppPython', expr, e.message);
+        log('Error requestExpr', expr, e.message);
     }
 }
 
