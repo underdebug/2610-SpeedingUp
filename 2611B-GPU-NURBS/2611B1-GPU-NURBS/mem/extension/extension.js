@@ -233,11 +233,10 @@ async function runPython(editor) {
             noDebug: true
         });
         if (!started) {
-            vscode.window.showErrorMessage('mem: Could not run the Python file.');
+            log('mem: Could not run the Python file.');
         }
     } catch (e) {
         log('Error runPython', e.message);
-        vscode.window.showErrorMessage(`mem: ${e.message}`);
     }
 }
 
@@ -1024,7 +1023,7 @@ async function activate(context) {
     try {
         registerShaderDefinitions(vscode, context);
     } catch (error) {
-        console.error('mem: Error registering shader definitions', error);
+        log('registerShaderDefinitions Error', error);
     }
 
     const memCmd = vscode.commands.registerCommand('mem', async () => { // F8

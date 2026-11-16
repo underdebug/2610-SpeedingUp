@@ -167,6 +167,40 @@ __global__ void NormalTest(double* MatrixN, int degree_u, int degree_v, int cp_u
 	print((PdVV_v_offset - PdVV) / offset);*/
 	printf("Normal: ");
 	print(TrueNormal(middle, degree_u, degree_v, cp_u, cp_v, knots_u, knots_v, u, v, spanU, spanV));
+
+    const int samples_u = cp_u, samples_v = cp_v;
+    double3* normal = new double3[samples_u * samples_v];
+    double3* display_points = new double3[samples_u * samples_v];
+
+    if (normal && display_points) for (int i = 0; i < samples_v; ++i) {
+            double sample_v = knots_v[degree_v] + (knots_v[cp_v] - knots_v[degree_v]) * i / (samples_v > 1 ? samples_v - 1 : 1);
+        int span_v = findSpan(degree_v, cp_v, knots_v, sample_v);
+        double local_v = (sample_v - knots_v[span_v]) / (knots_v[span_v + 1] - knots_v[span_v]);
+        double scale_v = (knots_v[degree_v + cp_v] - knots_v[0]) / (knots_v[span_v + 1] - knots_v[span_v]);
+        for (int j = 0; j < samples_u; ++j) {
+                double sample_u = knots_u[degree_u] + (knots_u[cp_u] - knots_u[degree_u]) * j / (samples_u > 1 ? samples_u - 1 : 1);
+            int span_u = findSpan(degree_u, cp_u, knots_u, sample_u);
+            double local_u = (sample_u - knots_u[span_u]) / (knots_u[span_u + 1] - knots_u[span_u]);
+            double scale_u = (knots_u[degree_u + cp_u] - knots_u[0]) / (knots_u[span_u + 1] - knots_u[span_u]);
+            double* sample_middle = MatrixN + MatrixNPosition(span_u, span_v, degree_u, degree_v, cp_u, cp_v, 0);
+            normal[i * samples_u + j] = TrueNormal(sample_middle, degree_u, degree_v, cp_u, cp_v,
+                                                    knots_u, knots_v, local_u, local_v, scale_u, scale_v);
+            double normal_length = norm(normal[i * samples_u + j]);
+            if (normal_length > 0.0) {
+                normal[i * samples_u + j] = normal[i * samples_u + j] / normal_length;
+            }
+            
+            display_points[i * samples_u + j] = homogenousToCartesian(
+                MatrixSurfacePoint(sample_middle, degree_u, degree_v, cp_u, cp_v,
+                                   knots_u, knots_v, local_u, local_v));
+        }
+    }
+
+    // -exec source test.cu_.py NormalTest QtAgg
+    delete[] normal;       
+    delete[] display_points; 
+
+
 	printf("NdUU: ");
 	print(SurfaceNormalDerivativeUU(PdU, PdV, PdUU, PdUV, PdUUU, PdUUV));
 	printf("NdUV: ");

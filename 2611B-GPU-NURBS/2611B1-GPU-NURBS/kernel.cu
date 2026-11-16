@@ -372,12 +372,20 @@ __global__ void TestSecondDerivative(double* MatrixN, int degree_u, int degree_v
 	
 }
 
+// Levels are stored in row-major grids, not as contiguous child groups.
+__device__ int TreeParentIndex(int base) {
+    if (base == 0) return -1;
+    return (base - 1) / ChildrenNumber
+        + (blockIdx.x / GapPerEdge) * (gridDim.y / GapPerEdge)
+        + blockIdx.y / GapPerEdge;
+}
+
 __global__ void GetSecondDerivatives(double* MatrixN, int degree_u, int degree_v, int cp_u, int cp_v,
 	double* knots_u, double *knots_v, double3* control_points, double* weights,
 	bool* Divided, int base, double4* RPoints, double *result, double3(*Der)(double*, int, int, int, int, double*, double*, double, double, double4, double, double)) {
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]) {
 		double base_unit = 1.0 / gridDim.x;
@@ -406,7 +414,7 @@ __global__ void GetPoints(double* MatrixN, int degree_u, int degree_v, int cp_u,
 	bool* Divided, int base, double4* RPoints) {
 	int index = (blockIdx.x * gridDim.y  + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]) {
 		double base_unit = 1.0 / gridDim.x;
@@ -476,7 +484,7 @@ __global__ void Project(double max_edge, double* MatrixN, int degree_u, int degr
 	// real input is random array
 	double3 P = { 0.000000,0.200049,0.616000 };
 	
-	for (int i = 0; i < TwoLayerTree; i++) {
+	for (int i = 0; i < TreeArraySize; i++) {
 		if (NormalBoundingBoxCheck(Tree[i], NormalTree[i], P)) {
 			if (GaussNewton(Tree[i].uv, P, max_edge, MatrixN, degree_u, degree_v,
 				cp_u, cp_v, knots_u, knots_v, control_points, weights, flag, result, index))
@@ -542,6 +550,8 @@ __global__ void BuildTree(double* MatrixN, int degree_u, int degree_v, int cp_u,
 }
 
 __global__ void TightBoundingBox(double4* RPoints, double *M1, double *M2, double *M3, int base, TreeNode* Tree, bool* Divided) {
+	int parent = TreeParentIndex(base);
+	if (parent >= 0 && !Divided[parent]) return;
 	int index = blockIdx.x * gridDim.y + blockIdx.y;
 	//printf("%d\n", index);
 	int sub_index = index * PointsPerEdge * PointsPerEdge;
@@ -596,7 +606,7 @@ __global__ void TightBoundingBox(double4* RPoints, double *M1, double *M2, doubl
 		}
 	}
 	if (idx == 0) {
-		int parent_index = (tree_index - 1) / ChildrenNumber;
+		int parent_index = TreeParentIndex(base);
 		if (parent_index < 0 || Divided[parent_index]) {
 			double K = (M1[index] + 2*M2[index] + M3[index]) * __dsqrt_rn(3) / (8 * GapPerEdge * gridDim.x * GapPerEdge * gridDim.x);
 			Tree[tree_index].left_bottom = { sdata[0].x - K, sdata[0].y - K, sdata[0].z - K };
@@ -621,6 +631,8 @@ __global__ void TightBoundingBox(double4* RPoints, double *M1, double *M2, doubl
 }
 
 __global__ void NormalBoundingBox(double3* Normal, double *N_M1, double *N_M2, double *N_M3, int base, TreeNode* NormalTree, bool* Divided){
+	int parent = TreeParentIndex(base);
+	if (parent >= 0 && !Divided[parent]) return;
 	int index = blockIdx.x * gridDim.y + blockIdx.y;
 	//printf("%d\n", index);
 	int sub_index = index * PointsPerEdge * PointsPerEdge;
@@ -675,11 +687,7 @@ __global__ void NormalBoundingBox(double3* Normal, double *N_M1, double *N_M2, d
 		}
 	}
 	if (idx == 0) {
-		int parent_index = (tree_index - 1) / ChildrenNumber;
-		// ToDo: remove this condition
-		if(parent_index >= 0){
-			Divided[parent_index] = true;
-		}
+		int parent_index = TreeParentIndex(base);
 		if (parent_index < 0 || Divided[parent_index]) {
 			double K = (N_M1[index] + 2*N_M2[index] + N_M3[index]) * __dsqrt_rn(3) / (8 * GapPerEdge * gridDim.x * GapPerEdge * gridDim.x);
 			NormalTree[tree_index].left_bottom = { sdata[0].x - K, sdata[0].y - K, sdata[0].z - K };
@@ -690,8 +698,7 @@ __global__ void NormalBoundingBox(double3* Normal, double *N_M1, double *N_M2, d
 				NormalTree[tree_index] = min(NormalTree[tree_index], NormalTree[parent_index]);
 				NormalTree[tree_index] = max(NormalTree[tree_index], NormalTree[parent_index]);
 			}
-			//判断是否需要继续细分
-			Divided[tree_index] = NormalNeedDivide(NormalTree[tree_index]);
+			// The geometric tree decides whether this node is subdivided.
 		}
 
 		/*printf("block: %d  K: %lf\n%lf %lf %lf\n%lf %lf %lf\n", index, K, 
@@ -905,7 +912,7 @@ __global__ void GetNormals(double* MatrixN, int degree_u, int degree_v, int cp_u
 	bool* Divided, int base, double3* Normals) {
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]) {
 		double base_unit = 1.0 / gridDim.x;
@@ -934,7 +941,7 @@ __global__ void GetNormalSecondDerivativeUUs(double* MatrixN, int degree_u, int 
 	bool* Divided, int base, double4* RPoints, double *result) {
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]) {
 		double base_unit = 1.0 / gridDim.x;
@@ -1043,7 +1050,7 @@ __global__ void BuildNormalBVH() {
 __global__ void getNormals(bool* Divided, int base, double4 *R, double4 *RdU, double4 *RdV, double3* Normal){
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]){
 		double3 P = homogenousToCartesian(R[index]);
@@ -1062,7 +1069,7 @@ __global__ void getRs(double* MatrixN, int degree_u, int degree_v, int cp_u, int
 	double* vectorUT, double* vectorV, double4 *R) {
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]) {
 		double base_unit = 1.0 / gridDim.x;
@@ -1103,7 +1110,7 @@ __global__ void getRdUs(double* MatrixN, int degree_u, int degree_v, int cp_u, i
 	double* vectorV, double4 *RdU) {
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]) {
 		double base_unit = 1.0 / gridDim.x;
@@ -1140,7 +1147,7 @@ __global__ void getRdVs(double* MatrixN, int degree_u, int degree_v, int cp_u, i
 	double* vectorUT, double* vectordV, double4 *RdV) {
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]) {
 		double base_unit = 1.0 / gridDim.x;
@@ -1171,7 +1178,7 @@ __global__ void getRdUUs(double* MatrixN, int degree_u, int degree_v, int cp_u, 
 	double* vectordUUT, double* vectorV, double4 *RdUU) {
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]) {
 		double base_unit = 1.0 / gridDim.x;
@@ -1202,7 +1209,7 @@ __global__ void getRdUVs(double* MatrixN, int degree_u, int degree_v, int cp_u, 
 	double* vectordUT, double* vectordV, double4 *RdUV) {
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]) {
 		double base_unit = 1.0 / gridDim.x;
@@ -1233,7 +1240,7 @@ __global__ void getRdVVs(double* MatrixN, int degree_u, int degree_v, int cp_u, 
 	double* vectorUT, double* vectordVV, double4 *RdVV) {
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]) {
 		double base_unit = 1.0 / gridDim.x;
@@ -1264,7 +1271,7 @@ __global__ void getRdUUUs(double* MatrixN, int degree_u, int degree_v, int cp_u,
 	double* vectordUUUT, double* vectorV, double4 *RdUUU) {
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]) {
 		double base_unit = 1.0 / gridDim.x;
@@ -1295,7 +1302,7 @@ __global__ void getRdUUVs(double* MatrixN, int degree_u, int degree_v, int cp_u,
 	double* vectordUUT, double* vectordV, double4 *RdUUV) {
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]) {
 		double base_unit = 1.0 / gridDim.x;
@@ -1326,7 +1333,7 @@ __global__ void getRdUVVs(double* MatrixN, int degree_u, int degree_v, int cp_u,
 	double* vectordUT, double* vectordVV, double4 *RdUVV) {
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]) {
 		double base_unit = 1.0 / gridDim.x;
@@ -1357,7 +1364,7 @@ __global__ void getRdVVVs(double* MatrixN, int degree_u, int degree_v, int cp_u,
 	double* vectorUT, double* vectordVVV, double4 *RdVVV) {
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]) {
 		double base_unit = 1.0 / gridDim.x;
@@ -1389,7 +1396,7 @@ __global__ void GetVector(int degree_u, int degree_v, int cp_u, int cp_v,
 	double *vectordUUT, double *vectordVV, double *vectordUUUT, double *vectordVVV) {
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]) {
 		double base_unit = 1.0 / gridDim.x;
@@ -1467,7 +1474,7 @@ __global__ void GetDerivatives(bool* Divided, int base, double4* R, double4 *RdU
 	double3 *PdUUU, double3 *PdUUV, double3 *PdUVV, double3 *PdVVV) {
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]) {
 		P[index] = homogenousToCartesian(R[index]);
@@ -1487,7 +1494,7 @@ __global__ void GetNdUUs(bool* Divided, int base, double4* R, double4 *RdU, doub
 	double4 *RdUU, double4 *RdUV, double4 *RdUUU, double4 *RdUUV, double *NdUU) {
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]) {
 		double3 P = homogenousToCartesian(R[index]);
@@ -1511,7 +1518,7 @@ __global__ void GetNdUVs(bool* Divided, int base, double4* R, double4 *RdU, doub
 	double4 *RdUU, double4 *RdUV, double4 *RdVV, double4 *RdUUV, double4 *RdUVV, double *NdUV) {
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 
 	if (parent_index < 0 || Divided[parent_index]) {
 		double3 P = homogenousToCartesian(R[index]);
@@ -1536,7 +1543,7 @@ __global__ void GetNdVVs(bool* Divided, int base, double4* R, double4 *RdU, doub
 	double4 *RdUV, double4 *RdVV, double4 *RdUVV, double4 *RdVVV, double *NdVV) {
 	int index = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x * blockDim.y + threadIdx.x *  blockDim.y + threadIdx.y;
 	// blockIdx.x等均为uint类型，-1可能会造成溢出
-	int parent_index = (base + (int)(blockIdx.x * gridDim.y + blockIdx.y) - 1) / ChildrenNumber;
+	int parent_index = TreeParentIndex(base);
 	if (parent_index < 0 || Divided[parent_index]) {
 		double3 P = homogenousToCartesian(R[index]);
 		double3 PdU = MatrixSurfaceDerivativeU(RdU[index], P, R[index].w);

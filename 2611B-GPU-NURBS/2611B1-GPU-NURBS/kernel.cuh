@@ -13,7 +13,7 @@
 constexpr int NODE_MAX_SIZE = 64;
 constexpr int STEP = 32;
 //
-constexpr int GapPerEdge = 8;
+constexpr int GapPerEdge = 4;
 constexpr int PointsPerEdge = GapPerEdge + 1;
 constexpr int ChildrenNumber = GapPerEdge * GapPerEdge;
 constexpr int PointsPerBlock = PointsPerEdge * PointsPerEdge;

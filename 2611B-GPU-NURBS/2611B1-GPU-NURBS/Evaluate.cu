@@ -502,7 +502,7 @@ __device__ double4 MatrixSurfaceRdVVV(double* middle, int degree_u, int degree_v
 }
 
 __host__ __device__ int findSpan(unsigned int degree, int cp, double *knots, double u) {
-	int n = cp - 1;
+    int n = cp - 1;
 	// For values of u that lies outside the domain
 	if (u >= knots[n + 1])
 	{

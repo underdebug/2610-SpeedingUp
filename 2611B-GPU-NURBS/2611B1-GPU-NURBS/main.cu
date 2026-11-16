@@ -144,6 +144,8 @@ int main() {
 	//cin >> file_name;
 
 	readNu(file_name, degree_u, degree_v, cp_u, cp_v, knots_u, knots_v, control_points, weights);
+    // -exec source main.cu_.py knots_u Agg
+    // -exec source main.cu_.py knots_v Agg
     // -exec source main.cu_.py control_points QtAgg
 
 	//double max_length;
@@ -201,6 +203,9 @@ int main() {
 	HANDLE_ERROR(cudaMalloc((void**)&GTree, sizeof(TreeNode) * TreeArraySize));
 	HANDLE_ERROR(cudaMalloc((void**)&GNormalBox, sizeof(TreeNode) * TreeArraySize));
 	HANDLE_ERROR(cudaMalloc((void**)&GNormalTree, sizeof(NormalTreeNode) * TreeArraySize));
+	// Unbuilt nodes contain NaNs, so bounding-box comparisons skip them.
+	HANDLE_ERROR(cudaMemset(GTree, 0xff, sizeof(TreeNode) * TreeArraySize));
+	HANDLE_ERROR(cudaMemset(GNormalBox, 0xff, sizeof(TreeNode) * TreeArraySize));
 	HANDLE_ERROR(cudaMalloc((void**)&M1, sizeof(double) * PointsArraySize));
 	HANDLE_ERROR(cudaMalloc((void**)&M2, sizeof(double) * PointsArraySize));
 	HANDLE_ERROR(cudaMalloc((void**)&M3, sizeof(double) * PointsArraySize));
@@ -280,7 +285,7 @@ int main() {
 
 	// Test second derivative
 	//TestSecondDerivative<<<1, 1>>>(MatrixN, degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v, Gcontrol_points, Gweights, { 0.95, 0.95 });
-	//cudaThreadSynchronize();
+	//cudaDeviceSynchronize();
 	//printf("test Error Code: %s\n", cudaGetErrorString(cudaGetLastError()));
 	
 #ifdef INVERSION_TEST
@@ -289,24 +294,24 @@ int main() {
 	int base = 0;
 	blocks = { PointsPerEdge ,PointsPerEdge };
 	grids = { 1, 1 };
-	int level = 2;
+	int level = TreeLevels;
 	for (int i = 0; i < level; i++) {
 		GetPoints<<< grids, blocks >>>(MatrixN, degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v, Gcontrol_points, Gweights, GDivided, base, GRPoints);
-		cudaThreadSynchronize();
+		cudaDeviceSynchronize();
 		//printf("1: %s\n", cudaGetErrorString(cudaGetLastError()));
 		GetSecondDerivatives << <grids, blocks >> > (MatrixN, degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v, Gcontrol_points, Gweights, GDivided, base, GRPoints, GdUU, HostDerUU);
 		GetSecondDerivatives << <grids, blocks >> > (MatrixN, degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v, Gcontrol_points, Gweights, GDivided, base, GRPoints, GdUV, HostDerUV);
 		GetSecondDerivatives << <grids, blocks >> > (MatrixN, degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v, Gcontrol_points, Gweights, GDivided, base, GRPoints, GdVV, HostDerVV);
-		cudaThreadSynchronize();
+		cudaDeviceSynchronize();
 		//printf("2: %s\n", cudaGetErrorString(cudaGetLastError()));
 
 		Max_Sequential_Addressing_Shared << < grids, PointsPerEdge * PointsPerEdge >> > (GdUU, PointsPerEdge * PointsPerEdge, M1);
 		Max_Sequential_Addressing_Shared << < grids, PointsPerEdge * PointsPerEdge >> > (GdUV, PointsPerEdge * PointsPerEdge, M2);
 		Max_Sequential_Addressing_Shared << < grids, PointsPerEdge * PointsPerEdge >> > (GdVV, PointsPerEdge * PointsPerEdge, M3);
-		cudaThreadSynchronize();
+		cudaDeviceSynchronize();
 		//printf("3: %s\n", cudaGetErrorString(cudaGetLastError()));
 		TightBoundingBox << < grids, PointsPerEdge * PointsPerEdge >> > (GRPoints, M1, M2, M3, base, GTree, GDivided);
-		cudaThreadSynchronize();
+		cudaDeviceSynchronize();
 		//printf("4: %s\n", cudaGetErrorString(cudaGetLastError()));
 		
 		//OutputBoolData << <1, 1 >> > (GDivided, base);
@@ -314,10 +319,10 @@ int main() {
 		grids.x *= GapPerEdge;
 		grids.y *= GapPerEdge;
 		//OutputTree << <1, 1 >> > (GTree, base);
-		cudaThreadSynchronize();
+		cudaDeviceSynchronize();
 	}
 	NewInverse<<<65536,512>>>(0.01, MatrixN, degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v, Gcontrol_points, Gweights, Grandom3, GTree, Gflag, Gresult);
-	cudaThreadSynchronize();
+	cudaDeviceSynchronize();
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
 	printf("Inverse Error Code: %s\n", cudaGetErrorString(cudaGetLastError()));
@@ -328,7 +333,7 @@ int main() {
 	//OutputTree << <1, 1 >> > (GTree, 65);
 	//OutputRPoints << <1, 1 >> > (GRPoints, 5*81);
 	//OutputData << <1, 1 >> > (GdUU, 5 * 81);
-	//cudaThreadSynchronize();
+	//cudaDeviceSynchronize();
 	//OutputData << <1, 1 >> > (M1, 64);
 	double time = (double)(e - s) / CLOCKS_PER_SEC;
 	//cout << time*1000 << endl;
@@ -340,10 +345,10 @@ int main() {
 	int base = 0;
 	blocks = { PointsPerEdge ,PointsPerEdge };
 	grids = { 1, 1 };
-	int level = 2;
+	int level = TreeLevels;
 	for (int i = 0; i < level; i++) {
 		GetVector <<< grids, blocks >>>(degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v, GDivided, base, vectorUT, vectorV, vectordUT, vectordV, vectordUUT, vectordVV, vectordUUUT, vectordVVV);
-		cudaThreadSynchronize();
+		cudaDeviceSynchronize();
 		// printf("1: %s\n", cudaGetErrorString(cudaGetLastError()));
 		getRs <<<grids, blocks>>> (MatrixN, degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v, GDivided, base, vectorUT, vectorV, R);
 		getRdUs << <grids, blocks >> > (MatrixN, degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v, GDivided, base, vectordUT, vectorV, RdU);
@@ -355,12 +360,12 @@ int main() {
 		getRdUUVs << <grids, blocks >> > (MatrixN, degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v, GDivided, base, vectordUUT, vectordV, RdUUV);
 		getRdUVVs << <grids, blocks >> > (MatrixN, degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v, GDivided, base, vectordUT, vectordVV, RdUVV);
 		getRdVVVs << <grids, blocks >> > (MatrixN, degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v, GDivided, base, vectorUT, vectordVVV, RdVVV);
-		cudaThreadSynchronize();
+		cudaDeviceSynchronize();
 		// kernel_print<<<1,1>>>(R, 2);
-		// cudaThreadSynchronize();
+		// cudaDeviceSynchronize();
 		// printf("2: %s\n", cudaGetErrorString(cudaGetLastError()));
 		// GetDerivatives << <grids, blocks >> > (GDivided, base, R, RdU, RdV, RdUU, RdUV, RdUV, RdUUU, RdUUV, RdUVV, RdVVV, P, PdU, PdV, PdUU, PdUV, PdVV, PdUUU, PdUUV, PdUVV, PdVVV);
-		//cudaThreadSynchronize();
+		//cudaDeviceSynchronize();
 		getNormals<< <grids, blocks >> >(GDivided, base, R, RdU, RdV, Normal);
 		GetSecondDerivatives << <grids, blocks >> > (MatrixN, degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v, Gcontrol_points, Gweights, GDivided, base, R, GdUU, HostDerUU);
 		GetSecondDerivatives << <grids, blocks >> > (MatrixN, degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v, Gcontrol_points, Gweights, GDivided, base, R, GdUV, HostDerUV);
@@ -368,9 +373,9 @@ int main() {
 		GetNdUUs << <grids, blocks >> > (GDivided, base, R, RdU, RdV, RdUU, RdUV, RdUUU, RdUUV, NdUU);
 		GetNdUVs << <grids, blocks >> > (GDivided, base, R, RdU, RdV, RdUU, RdUV, RdVV, RdUUV, RdUVV, NdUV);
 		GetNdVVs << <grids, blocks >> > (GDivided, base, R, RdU, RdV, RdUV, RdVV, RdUVV, RdVVV, NdVV);
-		cudaThreadSynchronize();
+		cudaDeviceSynchronize();
 		// kernel_print<<<1,1>>>(NdUU, 1, 1);
-		// cudaThreadSynchronize();
+		// cudaDeviceSynchronize();
 
 		Max_Sequential_Addressing_Shared << < grids, PointsPerEdge * PointsPerEdge >> > (GdUU, PointsPerEdge * PointsPerEdge, M1);
 		Max_Sequential_Addressing_Shared << < grids, PointsPerEdge * PointsPerEdge >> > (GdUV, PointsPerEdge * PointsPerEdge, M2);
@@ -378,16 +383,16 @@ int main() {
 		Max_Sequential_Addressing_Shared << < grids, PointsPerEdge * PointsPerEdge >> > (NdUU, PointsPerEdge * PointsPerEdge, N_M1);
 		Max_Sequential_Addressing_Shared << < grids, PointsPerEdge * PointsPerEdge >> > (NdUV, PointsPerEdge * PointsPerEdge, N_M2);
 		Max_Sequential_Addressing_Shared << < grids, PointsPerEdge * PointsPerEdge >> > (NdUV, PointsPerEdge * PointsPerEdge, N_M3);
-		cudaThreadSynchronize();
+		cudaDeviceSynchronize();
 		kernel_print<<<1,1>>>(N_M1, 1, 1);
 		kernel_print<<<1,1>>>(N_M2, 1, 1);
 		kernel_print<<<1,1>>>(N_M3, 1, 1);
-		cudaThreadSynchronize();
+		cudaDeviceSynchronize();
 		// printf("3: %s\n", cudaGetErrorString(cudaGetLastError()));
 		TightBoundingBox << < grids, PointsPerEdge * PointsPerEdge >> > (R, M1, M2, M3, base, GTree, GDivided);
 		NormalBoundingBox << < grids, PointsPerEdge * PointsPerEdge >> > (Normal, N_M1, N_M2, N_M3, base, GNormalBox, GDivided); 
 		NormalBoxToNormalTreeNode<<<grids.x, grids.y>>>(base, GNormalBox, GNormalTree);
-		cudaThreadSynchronize();
+		cudaDeviceSynchronize();
 		// printf("4: %s\n", cudaGetErrorString(cudaGetLastError()));
 
 		//OutputBoolData << <1, 1 >> > (GDivided, base);
@@ -397,17 +402,17 @@ int main() {
 		OutputTree << <1, 1 >> > (GTree, base);
 		// OutputTree << <1, 1 >> > (GNormalBox, base);
 		// OutputNormalTree<<< 1, 1>>>(GNormalTree, base);
-		cudaThreadSynchronize();
+		cudaDeviceSynchronize();
 	}
 	Project<<<1,1>>>(0.001, MatrixN, degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v, Gcontrol_points, Gweights, Grandom3, GTree, GNormalTree, Gflag, Gresult);
-	cudaThreadSynchronize();
+	cudaDeviceSynchronize();
 	printf("Project Error Code: %s\n", cudaGetErrorString(cudaGetLastError()));
 #endif
 
 #ifdef FUNC_TEST
 
 	NormalTest << <1, 1 >> > (MatrixN, degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v, Gcontrol_points, Gweights, { 0.5, 0.5 });
-	cudaThreadSynchronize();
+	cudaDeviceSynchronize();
 	printf("func test Error Code: %s\n", cudaGetErrorString(cudaGetLastError()));
 
 #endif // FUNC_TEST
@@ -705,7 +710,7 @@ int main() {
 
 	cudaEventRecord(start);
 	UniformAccess << <grid, block >> > (devStates,nx,ny,arr,size);
-	// cudaThreadSynchronize();
+	// cudaDeviceSynchronize();
 	cudaEventRecord(stop);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&elapsedTime, start, stop);
@@ -713,7 +718,7 @@ int main() {
 
 	cudaEventRecord(start);
 	RandomAccess << <grid, block >> > (devStates,nx,ny,arr,size);
-	// cudaThreadSynchronize();
+	// cudaDeviceSynchronize();
 	cudaEventRecord(stop);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&elapsedTime, start, stop);

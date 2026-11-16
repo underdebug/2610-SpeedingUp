@@ -1,5 +1,5 @@
 
-LOG = 0 # 10/29 2026
+LOG = 1 # 10/29 2026
 
 import gdb
 import subprocess
@@ -265,6 +265,15 @@ def cpu_stdpair(para):
         'second': cpu_(para['second'], None, None),
     }
 
+def cpu_struct_struct(para):
+    return cpu_(para, None, None)
+
+def cpu_struct_union(para):
+    for member in para.type.strip_typedefs().fields():
+        if member.name is not None:
+            return {member.name: cpu_(para[member.name], None, None)}
+    return {}
+
 def cpu_struct(para, Type=None, Size=None):
     if Type is not None and Size is not None:
         return cpu_memory(int(para.address), Type, Size)
@@ -273,22 +282,23 @@ def cpu_struct(para, Type=None, Size=None):
 
     results = {}
     for field in ftype.fields():
+        para2 = para[field]
         ftype2 = field.type.strip_typedefs().unqualified()
-        # GLM vector components live in anonymous unions. GDB exposes those
-        # fields without a name; access their named members through the parent.
-        if field.name is None:
-            if ftype2.code in {gdb.TYPE_CODE_STRUCT, gdb.TYPE_CODE_UNION}:
-                for member in ftype2.fields():
-                    if member.name is not None:
-                        results[member.name] = cpu_(para[member.name], None, None)
-                        # Union members alias the same storage; keep the first
-                        # name only (GLM uses x/r/s, y/g/t, and z/b/p).
-                        if ftype2.code == gdb.TYPE_CODE_UNION:
-                            break
-            continue
-        para2 = para[field.name]
 
-        if ftype2.code in {
+        if field.name is None:
+            if ftype2.code == gdb.TYPE_CODE_STRUCT:
+                results.update(cpu_struct_struct(para2))
+            elif ftype2.code == gdb.TYPE_CODE_UNION:
+                results.update(cpu_struct_union(para2))
+            continue
+
+        if ftype2.code == gdb.TYPE_CODE_STRUCT:
+            results[field.name] = cpu_struct_struct(para2)
+
+        elif ftype2.code == gdb.TYPE_CODE_UNION:
+            results[field.name] = cpu_struct_union(para2)
+
+        elif ftype2.code in {
                 gdb.TYPE_CODE_INT,
                 gdb.TYPE_CODE_FLT,
                 gdb.TYPE_CODE_BOOL,
@@ -690,7 +700,7 @@ def gpu(Name, Type=None, Size=None):
         if LOG: PRINT('expr', expr)
         gdb.parse_and_eval(expr)
 
-def kernel_memory(para, Type, Size, Step):
+def kernel_memory(para, Type, Size, Step=1):
     if LOG: PRINT('para', para, 'Type', Type, 'Size', Size, 'Step', Step)
 
     if Size is not None and Step == 1 and len(Size) > 1:
@@ -751,6 +761,7 @@ def kernel_memory(para, Type, Size, Step):
                         
                         data[ii, jj] = data[i, j];
         return data
+
     elif Size is not None and len(Size) == 1:
         count = int(Size[0])
         if count != Size[0] or count < 0:
@@ -765,6 +776,7 @@ def kernel_memory(para, Type, Size, Step):
             value = float(value) if dtype.kind == 'f' else int(value)
             data[i:min(i + Step, count)] = value
         return data
+
     elif Size is None:
         # Probe a bounded readable prefix using the original CUDA pointer.
         # Readability does not identify an allocation's exact boundary.
@@ -843,6 +855,54 @@ def kernel_struct(para, Type=None, Size=None):
 
     return results
 
+
+def kernel_buffer_size(d_addr):
+    try:
+        control_points = gdb.parse_and_eval('control_points')
+        if int(control_points) == d_addr:
+            cp_u = int(gdb.parse_and_eval('cp_u'))
+            cp_v = int(gdb.parse_and_eval('cp_v'))
+            target = control_points.type.strip_typedefs().unqualified().target()
+            if cp_u >= 0 and cp_v >= 0:
+                return cp_u * cp_v * target.sizeof
+    except (gdb.error, RuntimeError):
+        pass
+
+    raise ValueError('Cannot determine kernel pointer size; provide Size explicitly')
+
+def kernel_ptr(para, Type, Size, Step=1):
+    ftype = para.type.strip_typedefs().unqualified()
+    if LOG: PRINT('str(ftype)', str(ftype))
+
+    if int(para) == 0:
+        return None
+
+    target_type = ftype.target().strip_typedefs().unqualified()
+    if target_type.code == gdb.TYPE_CODE_STRUCT:
+        if LOG: PRINT('gdb.TYPE_CODE_PTR, gdb.TYPE_CODE_STRUCT ')
+
+        if Size is None:
+            Size = 1
+            if LOG: PRINT('Size (Size is None)', Size)
+        else:
+            Size = int(Size[0])
+            if LOG: PRINT('Size (Size[0])', Size)
+
+        count = Size
+        results = [None] * count
+        for i in range(0, count):
+            results[i] = kernel_struct((para + i).dereference(), Type, 1)
+        return results
+
+    Addr = int(para) # Normal PTR
+    if Type is None:
+        Type = str(target_type).replace('@generic ', '')
+    if Size is None:
+        Size = np.array([1])
+
+    if LOG: PRINT('Addr', Addr, 'Type', Type, 'Size', Size, 'Step', Step)
+    return kernel_memory(para, Type, Size, Step)
+    
 def kernel_(para, Type=None, Size=None, Step = 1):  
     ftype = para.type.strip_typedefs()
 
@@ -855,22 +915,7 @@ def kernel_(para, Type=None, Size=None, Step = 1):
     if LOG: PRINT('ftype', str(ftype), 'ftype.code', ftype.code)
 
     if ftype.code == gdb.TYPE_CODE_PTR: # 1
-        if LOG: PRINT('str(ftype)', str(ftype))
-    
-        if int(para) == 0:
-            return None
-
-        target_type = ftype.target().strip_typedefs().unqualified()
-        if target_type.code == gdb.TYPE_CODE_STRUCT:
-            if LOG: PRINT('ftype.code == gdb.TYPE_CODE_PTR, target_type.code == gdb.TYPE_CODE_STRUCT ')
-            return kernel_struct(para.dereference(), Type, Size)
-
-        Addr = int(para) # Normal PTR
-        if Type is None:
-            Type = str(target_type).replace('@generic ', '')
-
-        if LOG: PRINT('Addr', Addr, 'Type', Type, 'Size', Size, 'Step', Step)
-        return kernel_memory(para, Type, Size, Step)
+        return kernel_ptr(para, Type, Size, Step)
   
     elif ftype.code == gdb.TYPE_CODE_ARRAY: # 2
         return kernel_array(para, Type, Size)  
