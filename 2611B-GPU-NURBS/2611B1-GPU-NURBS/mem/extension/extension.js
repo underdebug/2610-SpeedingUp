@@ -444,40 +444,32 @@ async function memCppCpp(session) {
         }
     } else { // SELECTION
         text = editor.document.getText(editor.selection);
-        const isParameter = /^\S+$/.test(text.trim());
-
-        if (isParameter) {
-            const expression = `value = mem('${text}'); printf(value, '${text}', ${line})`;
+        const lines = text.split(/\r?\n/);
+        if(lines.length <= 1){ // 
+            const expression = `value = mem(${JSON.stringify(text)}); printf(value, ${JSON.stringify(text)}, ${line})`;
             const expr = `-exec python exec(${JSON.stringify(expression)})`;
             const response = await session.customRequest('evaluate', {
                 expression: expr,
                 context: 'repl',
                 frameId: frameId
             });
-            if (response && typeof response.result === 'string' && response.result.length > 0) {
-                vscode.debug.activeDebugConsole.appendLine(response.result);
+            if (LOG && response && typeof response.result === 'string' && response.result.length > 0) {
+                log(response.result);
             }
-        } else {
-            const lines = text.split(/\r?\n/).map(line => line.replace(/\s+$/, ''));
+        }
+        else{
+            // Remove spaces/tabs before // and one space after it.
+            // Example: "    //     print(x)" → "    print(x)"
+            const text_New = lines.map(line => line.replace(/^[ \t]*\/\/ ?/, '')).join('\n');
 
-            const valid_lines = [];
-            for (const line of lines.map(line => line.trim())) {
-                if (line !== '' && !await runExec(line)) { // -EXEC NODELETE
-                    valid_lines.push(line);
-                }
-            }
-
-            if (valid_lines.length > 0) {
-                let expression = valid_lines.join(" \n");
-                const expr = `-exec python exec(${JSON.stringify(expression)})`;
-                const response = await session.customRequest('evaluate', {
-                    expression: expr,
-                    context: 'repl',
-                    frameId: frameId
-                });
-                if (response && typeof response.result === 'string' && response.result.length > 0) {
-                    vscode.debug.activeDebugConsole.appendLine(response.result);
-                }
+            const expr = `-exec python exec(${JSON.stringify(text_New)})`;
+            const response = await session.customRequest('evaluate', {
+                expression: expr,
+                context: 'repl',
+                frameId: frameId
+            });
+            if (LOG && response && typeof response.result === 'string' && response.result.length > 0) {
+                log(response.result);
             }
         }
     }

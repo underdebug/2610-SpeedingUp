@@ -517,6 +517,8 @@ __host__ __device__ int findSpan(unsigned int degree, int cp, double *knots, dou
 	int low = degree;
 	int high = n + 1;
 	int mid = (int)((low + high) / 2.0);
+
+    // -exec break blockIdx.x == 0 && threadIdx.x == 0
 	while (u < knots[mid] || u >= knots[mid + 1])
 	{
 		if (u < knots[mid])

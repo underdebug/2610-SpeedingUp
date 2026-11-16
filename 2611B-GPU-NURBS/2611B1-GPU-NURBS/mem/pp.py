@@ -17,7 +17,7 @@ print('knots_u', knots_u)
 knots_v = mem('knots_v', '', 20)
 print('knots_v', knots_v)
 
-knots = mem('knots', '', 'n')
+knots = mem('knots', '', 20)
 print(knots)
 
 

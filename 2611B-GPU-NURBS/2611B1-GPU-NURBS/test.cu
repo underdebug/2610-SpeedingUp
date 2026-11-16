@@ -2,7 +2,8 @@
 
 __global__ void NormalTest(double* MatrixN, int degree_u, int degree_v, int cp_u, int cp_v,
 	double* knots_u, double *knots_v, double3* control_points, double* weights, double2 Current) {
-	int m = findSpan(degree_u, cp_u, knots_u, Current.x);
+	// -exec break blockIdx.x == 0 && threadIdx.x == 0
+    int m = findSpan(degree_u, cp_u, knots_u, Current.x);
 	int n = findSpan(degree_v, cp_v, knots_v, Current.y);
 	double u = (Current.x - knots_u[m]) / (knots_u[m + 1] - knots_u[m]);
 	double v = (Current.y - knots_v[n]) / (knots_v[n + 1] - knots_v[n]);
@@ -13,7 +14,7 @@ __global__ void NormalTest(double* MatrixN, int degree_u, int degree_v, int cp_u
 	double spanV = (knots_v[degree_v + cp_v] - knots_v[0]) / (knots_v[n + 1] - knots_v[n]);
 	double* middle = MatrixN + MatrixNPosition(m, n, degree_u, degree_v, cp_u, cp_v, 0);
 
-	int k1 = degree_u + 1, k2 = degree_v + 1;
+	int k1 = degree_u + 1, k2 = degr2ee_v + 1;
 
 	double vectorUT[MAX_DEGREE], vectorV[MAX_DEGREE];
 	double now = 1;
