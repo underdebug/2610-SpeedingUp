@@ -14,7 +14,7 @@ __global__ void NormalTest(double* MatrixN, int degree_u, int degree_v, int cp_u
 	double spanV = (knots_v[degree_v + cp_v] - knots_v[0]) / (knots_v[n + 1] - knots_v[n]);
 	double* middle = MatrixN + MatrixNPosition(m, n, degree_u, degree_v, cp_u, cp_v, 0);
 
-	int k1 = degree_u + 1, k2 = degr2ee_v + 1;
+	int k1 = degree_u + 1, k2 = degree_v + 1;
 
 	double vectorUT[MAX_DEGREE], vectorV[MAX_DEGREE];
 	double now = 1;
