@@ -35,3 +35,8 @@ get_target_property(CUDA_CUBLAS_PATH CUDA::cublas IMPORTED_LOCATION)
 get_filename_component(CUDA_LIBRARY_DIR "${CUDA_CUBLAS_PATH}" DIRECTORY)
 target_link_options(NURBS PRIVATE "$<DEVICE_LINK:-L${CUDA_LIBRARY_DIR}>")
 set_target_properties(NURBS PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+
+add_executable(NrcTest Evaluate.cu_.cu Evaluate.cu ExtraMath.cu Matrix.cu Operator.cu)
+target_link_libraries(NrcTest PRIVATE CUDA::cublas CUDA::cusparse)
+target_link_options(NrcTest PRIVATE "$<DEVICE_LINK:-L${CUDA_LIBRARY_DIR}>")
+set_target_properties(NrcTest PROPERTIES CUDA_SEPARABLE_COMPILATION ON)

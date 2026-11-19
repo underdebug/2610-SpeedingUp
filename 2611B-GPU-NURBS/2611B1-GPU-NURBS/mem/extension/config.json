@@ -11,13 +11,14 @@
         "linkArgs": []
     },
     "cuda-gdb": {
+        "architecture": "89",
         "includeDirs": [
             "/usr/include/jsoncpp",
             "/usr/include/eigen3",
             "lib/glad/include"
         ],
-        "libraryDirs": [],
-        "libraries": [],
+        "libraryDirs": ["/usr/local/cuda/lib64"],
+        "libraries": ["cublas", "cusparse"],
         "linkArgs": []
     }
 }

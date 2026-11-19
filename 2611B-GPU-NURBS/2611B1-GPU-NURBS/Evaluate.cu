@@ -88,6 +88,7 @@ __global__ void GetMatrixN(double *MatrixN, int degree_u, int degree_v, int cp_u
 }
 
 __device__ double Nrc(double* knot, int m, int r, int c, int j, int i, int d) {
+    // -exec source Evaluate.cu_.py Nrc
 	if (m == 0) {
 		if (((i + c - 1) == (j + d)) && (r == 1))
 			return 1;
@@ -95,10 +96,10 @@ __device__ double Nrc(double* knot, int m, int r, int c, int j, int i, int d) {
 			return 0;
 	}
 	else {
-		return Nabla(knot, d, i, 1) / Nabla(knot, d, j, d - m + 1)*Nrc(knot, m - 1, r - 1, c, j, i, d)
-			+ Nabla(knot, d, j, i - j) / Nabla(knot, d, j, d - m + 1)*Nrc(knot, m - 1, r, c, j, i, d)
-			+ (1 - Nabla(knot, d, j, i - j) / Nabla(knot, d, j, d - m + 1))*Nrc(knot, m - 1, r, c, j - 1, i, d)
-			+ (-Nabla(knot, d, i, 1) / Nabla(knot, d, j, d - m + 1))*Nrc(knot, m - 1, r - 1, c, j - 1, i, d);
+		return     Nabla(knot, d, i, 1)     / Nabla(knot, d, j, d - m + 1)  * Nrc(knot, m - 1, r - 1, c, j,     i, d)
+			+      Nabla(knot, d, j, i - j) / Nabla(knot, d, j, d - m + 1)  * Nrc(knot, m - 1, r,     c, j,     i, d)
+			+ (1 - Nabla(knot, d, j, i - j) / Nabla(knot, d, j, d - m + 1)) * Nrc(knot, m - 1, r,     c, j - 1, i, d)
+			+ (  - Nabla(knot, d, i, 1)     / Nabla(knot, d, j, d - m + 1)) * Nrc(knot, m - 1, r - 1, c, j - 1, i, d);
 	}
 }
 

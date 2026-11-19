@@ -820,6 +820,16 @@ async function debugCudaGdb(source) {
     if (!await vscode.workspace.saveAll()) return false;
     LOG && log('vscode.workspace.saveAll()');
 
+    // A CUDA header is not an executable; use its matching source and test.
+    if (/\.cuh$/i.test(source)) {
+        const cudaSource = source.replace(/\.cuh$/i, '.cu');
+        if (!fs.existsSync(cudaSource)) {
+            vscode.window.showErrorMessage(`mem: No matching CUDA source found: ${cudaSource}`);
+            return false;
+        }
+        source = cudaSource;
+    }
+
     if (!isTestFile(source)) {
         const testfile = `${source}_.cu`;
         if (fs.existsSync(testfile)) {
@@ -1035,8 +1045,13 @@ async function activate(context) {
             if (editor && !editor.document.isClosed && !await editor.document.save()) return;
             await cmdCudaGdb();
         } catch (error) {
-            log('Error activate::cmdCudaGdb', error.message || error);
-            vscode.window.showErrorMessage(`mem: ${error.message || error}`);
+            const detail = [error.stdout, error.stderr].filter(Boolean).join('\n').trim()
+                || error.message || String(error);
+            if (!cudaGdbCmd.outputChannel) {
+                cudaGdbCmd.outputChannel = vscode.window.createOutputChannel('CUDA Build');
+            }
+            cudaGdbCmd.outputChannel.appendLine('CUDA build or debug error:\n' + detail);
+            cudaGdbCmd.outputChannel.show(true);
         }
     });
 

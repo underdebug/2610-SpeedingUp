@@ -8,8 +8,17 @@ const buildConfig = require('./config.json')['cuda-gdb'];
 function getBuildOptions(projectDir) {
     const resolveDir = dir => path.resolve(projectDir, dir);
     return {
-        compileArgs: buildConfig.includeDirs.flatMap(dir => ['-I', resolveDir(dir)]),
+        compileArgs: [
+            // Build native code for the GPU specified in config.json (89 for RTX 4050).
+            `-arch=sm_${buildConfig.architecture}`,
+            // Match the C++ standard used by the CMake build.
+            '-std=c++17',
+            ...buildConfig.includeDirs.flatMap(dir => ['-I', resolveDir(dir)])
+        ],
         linkArgs: [
+            // Use the same GPU architecture for the CUDA device link.
+            `-arch=sm_${buildConfig.architecture}`,
+            // config.json supplies the library path and cuBLAS/cuSPARSE libraries.
             ...buildConfig.libraryDirs.flatMap(dir => ['-L', resolveDir(dir)]),
             ...buildConfig.libraries.map(library => `-l${library}`),
             ...buildConfig.linkArgs
@@ -70,7 +79,7 @@ function discoverHeaders(source) {
 
 // Find a source file corresponding to a local header.
 function findSource(header, sourceDir) {
-    const base = header.replace(/\.(h|hpp|hh)$/i, '');
+    const base = header.replace(/\.(h|hpp|hh|cuh)$/i, '');
     for (const extension of ['.cu', '.cpp', '.cc', '.cxx']) {
         const source = path.resolve(sourceDir, `${base}${extension}`);
         if (fs.existsSync(source)) return source;
@@ -80,27 +89,27 @@ function findSource(header, sourceDir) {
 }
 
 // Recursively collect source files referenced by local headers.
-function collectSources(source, visited = new Set()) {
-    source = path.resolve(source);
+function collectSources(source) {
+    const sources = new Set();
+    const visited = new Set();
 
-    if (visited.has(source)) {
-        return visited;
-    }
+    function visit(file) {
+        file = path.resolve(file);
+        if (visited.has(file)) return;
+        visited.add(file);
 
-    visited.add(source);
-
-    const sourceDir = path.dirname(source);
-    const headers = discoverHeaders(source);
-
-    for (const header of headers) {
-        const cpp = findSource(header, sourceDir);
-
-        if (cpp) {
-            collectSources(cpp, visited);
+        if (/\.(cu|cpp|cc|cxx)$/i.test(file)) sources.add(file);
+        for (const header of discoverHeaders(file)) {
+            const local = path.resolve(path.dirname(file), header);
+            if (!fs.existsSync(local) || !fs.statSync(local).isFile()) continue;
+            visit(local);
+            const cpp = findSource(header, path.dirname(file));
+            if (cpp) visit(cpp);
         }
     }
 
-    return visited;
+    visit(source);
+    return sources;
 }
 
 // Generate copies of sources and local headers while keeping debug locations in the originals.
@@ -150,24 +159,41 @@ function hasChangedDependency(source, changedFiles, visited = new Set()) {
     return false;
 }
 
+function hasNewerDependency(source, generated, objectTime, visited = new Set()) {
+    source = path.resolve(source);
+    if (visited.has(source)) return false;
+    visited.add(source);
+    const copy = generated.get(source);
+    if (copy && fs.statSync(copy).mtimeMs > objectTime) return true;
+    return discoverHeaders(source).some(header => {
+        const local = path.resolve(path.dirname(source), header);
+        return fs.existsSync(local) && fs.statSync(local).isFile()
+            && hasNewerDependency(local, generated, objectTime, visited);
+    });
+}
+
 // Compile one CUDA or C++ source file into an object file.
-function compileSource(source, buildDir, generatedDir, compileArgs, originalSource, changedFiles) {
+function compileSource(source, buildDir, generatedDir, compileArgs, originalSource, changedFiles, generated) {
     const object = path.join(buildDir, `${path.relative(generatedDir, source)}.o`);
     fs.mkdirSync(path.dirname(object), { recursive: true });
 
-    if (fs.existsSync(object) && !hasChangedDependency(originalSource, changedFiles)) {
+    if (fs.existsSync(object) && !hasChangedDependency(originalSource, changedFiles)
+        && !hasNewerDependency(originalSource, generated, fs.statSync(object).mtimeMs)) {
         return { object, compiled: false };
     }
 
+    // A failed compilation must never leave an old object eligible for reuse.
+    fs.rmSync(object, { force: true });
     execFileSync(process.env.NVCC || 'nvcc', [
         '-g',
         '-G',
+        '-rdc=true',
         ...compileArgs,
         '-c',
         source,
         '-o',
         object
-    ], { stdio: 'inherit' });
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 
     return { object, compiled: true };
 }
@@ -175,11 +201,12 @@ function compileSource(source, buildDir, generatedDir, compileArgs, originalSour
 // Link object files into the executable.
 function linkObjects(objects, output, linkArgs) {
     execFileSync(process.env.NVCC || 'nvcc', [
+        '-rdc=true',
         ...objects,
         '-o',
         output,
         ...linkArgs
-    ], { stdio: 'inherit' });
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
 
 function prepareGpu(entry, buildDir) {
@@ -201,7 +228,7 @@ function prepareGpu(entry, buildDir) {
         generateGpuFile(source, generatedDir, path.dirname(entry), generated, changedFiles)
     );
     const compileResults = generatedSources.map((source, index) =>
-        compileSource(source, objectDir, generatedDir, options.compileArgs, sources[index], changedFiles)
+        compileSource(source, objectDir, generatedDir, options.compileArgs, sources[index], changedFiles, generated)
     );
     const output = path.join(programDir, programName);
 
@@ -210,6 +237,8 @@ function prepareGpu(entry, buildDir) {
     }
 
     const objects = compileResults.map(result => result.object);
+    // Do not retain a stale executable if linking fails.
+    fs.rmSync(output, { force: true });
     linkObjects(objects, output, options.linkArgs);
 
     return output;
