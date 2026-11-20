@@ -1,0 +1,19 @@
+{
+  "version":"0.2.0",
+  "configurations":[
+    {
+      "name":"Debug NURBS Vulkan (XWayland)",
+      "type":"cppdbg",
+      "request":"launch",
+      "program":"${workspaceFolder}/build/NurbsVulkan",
+      "args":[],
+      "stopAtEntry":false,
+      "cwd":"${workspaceFolder}/build",
+      "environment":[{"name":"GDK_BACKEND","value":"x11"}],
+      "externalConsole":false,
+      "MIMode":"gdb",
+      "preLaunchTask":"CMake build",
+        "internalConsoleOptions": "openOnSessionStart"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+cmake_minimum_required(VERSION 3.20)
+project(NurbsVulkanXWayland LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+find_package(Vulkan REQUIRED)
+find_package(X11 REQUIRED)
+find_program(GLSLANG_VALIDATOR glslangValidator REQUIRED)
+add_executable(NurbsVulkan main.cpp)
+target_compile_definitions(NurbsVulkan PRIVATE VK_USE_PLATFORM_XLIB_KHR)
+target_include_directories(NurbsVulkan PRIVATE ${X11_INCLUDE_DIR})
+target_link_libraries(NurbsVulkan PRIVATE Vulkan::Vulkan ${X11_LIBRARIES})
+target_compile_options(NurbsVulkan PRIVATE -Wall -Wextra -Wpedantic)
+foreach(NAME surface.vert surface.frag control_points.vert control_points.frag)
+  add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${NAME}.spv"
+    COMMAND ${GLSLANG_VALIDATOR} -V "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${NAME}" -o "${CMAKE_CURRENT_BINARY_DIR}/${NAME}.spv"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${NAME}"
+    VERBATIM)
+  list(APPEND SPIRV_FILES "${CMAKE_CURRENT_BINARY_DIR}/${NAME}.spv")
+endforeach()
+add_custom_target(Shaders ALL DEPENDS ${SPIRV_FILES})
+add_dependencies(NurbsVulkan Shaders)
+set_target_properties(NurbsVulkan PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+
+enable_testing()
+add_test(NAME NurbsMath COMMAND NurbsVulkan --test)
