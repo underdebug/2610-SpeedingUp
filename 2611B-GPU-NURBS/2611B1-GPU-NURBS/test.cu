@@ -1,11 +1,6 @@
 #include "test.cuh"
 
 __global__ void NormalTest(double* MatrixN, int degree_u, int degree_v, int cp_u, int cp_v,
-	
-	const int degree = 3;
-	const int degree = 3;
-	const int degree = 3;
-	
 	double* knots_u, double *knots_v, double3* control_points, double* weights, double2 Current) {
 	// -exec break blockIdx.x == 0 && threadIdx.x == 0
     int m = findSpan(degree_u, cp_u, knots_u, Current.x);

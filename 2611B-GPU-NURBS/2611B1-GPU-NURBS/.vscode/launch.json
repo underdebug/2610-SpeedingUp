@@ -11,19 +11,6 @@
       "stopAtEntry": false,
       "miDebuggerPath": "/usr/local/cuda/bin/cuda-gdb",
         "internalConsoleOptions": "openOnSessionStart"
-    },
-    {
-      "name": "CPPDBG",
-      "type": "cppdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}/build/NURBS",
-      "args": [],
-      "cwd": "${workspaceFolder}",
-      "stopAtEntry": false,
-      "externalConsole": false,
-      "MIMode": "gdb",
-      "miDebuggerPath": "/usr/local/cuda/bin/cuda-gdb",
-        "internalConsoleOptions": "openOnSessionStart"
     }
   ]
 }

@@ -1,4 +1,3 @@
-// Build and run: cmake --build build --target NrcTest && ./build/NrcTest
 #include <cuda_runtime.h>
 
 #include "Evaluate.cuh"
@@ -76,7 +75,7 @@ void GetMatrixTest1()
 	cudaFree(data);
 }
 
-int main() {
+int Main() {
 	GetMatrixTest1();
 	//GetMatrixTest3();
 	return 0;

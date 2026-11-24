@@ -1,16 +1,21 @@
 cmake_minimum_required(VERSION 3.18)
 
-project(NURBS LANGUAGES CXX CUDA)
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES AND "$ENV{CUDAARCHS}" STREQUAL "")
+    set(CMAKE_CUDA_ARCHITECTURES 86 CACHE STRING "CUDA architectures")
+endif()
+
+# Detect CUDA before CXX so CMake searches PATH before the host compiler directory.
+project(NURBS LANGUAGES CUDA CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
-if(NOT CMAKE_CUDA_ARCHITECTURES)
-    set(CMAKE_CUDA_ARCHITECTURES 86)
+# Prefer libraries from the CUDA compiler's toolkit over system installations.
+if(NOT DEFINED CUDAToolkit_ROOT AND "$ENV{CUDAToolkit_ROOT}" STREQUAL "")
+    set(CUDAToolkit_ROOT "${CMAKE_CUDA_COMPILER_TOOLKIT_ROOT}")
 endif()
-
 find_package(CUDAToolkit REQUIRED)
 
 add_executable(NURBS
@@ -35,8 +40,3 @@ get_target_property(CUDA_CUBLAS_PATH CUDA::cublas IMPORTED_LOCATION)
 get_filename_component(CUDA_LIBRARY_DIR "${CUDA_CUBLAS_PATH}" DIRECTORY)
 target_link_options(NURBS PRIVATE "$<DEVICE_LINK:-L${CUDA_LIBRARY_DIR}>")
 set_target_properties(NURBS PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-
-add_executable(NrcTest Evaluate.cu_.cu Evaluate.cu ExtraMath.cu Matrix.cu Operator.cu)
-target_link_libraries(NrcTest PRIVATE CUDA::cublas CUDA::cusparse)
-target_link_options(NrcTest PRIVATE "$<DEVICE_LINK:-L${CUDA_LIBRARY_DIR}>")
-set_target_properties(NrcTest PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
