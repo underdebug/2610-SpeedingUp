@@ -126,13 +126,32 @@ __device__ Der StaticDerUV = MatrixSurfaceDerivativeUV;
 __device__ Der StaticDerVV = MatrixSurfaceDerivativeVV;
 
 int main() {
-	int A[5] = {1,2,3,4,5};
-	int* B = (int*)A;
-	bool C = true;
-	bool* D = &C;
-	std::vector<bool> E;
-	E.push_back(true);
-	E.push_back(false);
+	freopen("log.txt", "w", stdout);
+    setvbuf(stdout, nullptr, _IONBF, 0);
+    // tail -f log.txt
+
+	// const string logPath = "NURBS.log";
+	// freopen(logPath.c_str(), "w", stderr);
+	// setvbuf(stderr, nullptr, _IONBF, 0);
+
+	// const string watchLog = "tail -F --pid=\"$PPID\" -- " + logPath + " &";
+	// freopen(logPath.c_str(), "a", stdout);
+	// setvbuf(stdout, nullptr, _IOLBF, 0);
+
+	printf("111");
+
+	// const string logPath = "NURBS.log";
+	// if (FILE* log = fopen(logPath.c_str(), "w")) {
+	// 	fclose(log);
+	// 	const string watchLog = "tail -F --pid=\"$PPID\" -- " + logPath + " &";
+	// 	system(watchLog.c_str());
+	// 	if (freopen(logPath.c_str(), "a", stdout)) {
+	// 		setvbuf(stdout, nullptr, _IOLBF, 0);
+	// 	}
+	// 	if (freopen(logPath.c_str(), "a", stderr)) {
+	// 		setvbuf(stderr, nullptr, _IONBF, 0);
+	// 	}
+	// }
 
 	double *weights;
 	double3 *control_points;
@@ -266,7 +285,7 @@ int main() {
 	GetMatrixN<<<(degree_u+cp_u),(degree_v+cp_v)>>>(MatrixN, degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v, Gcontrol_points, Gweights);
 	//EvaluateRandom<<<2500,600>>>(Grandom, Grandom3, MatrixN, degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v);
 	cudaDeviceSynchronize();
-	printf("0: %s\n", cudaGetErrorString(cudaGetLastError()));
+	//printf("0: %s\n", cudaGetErrorString(cudaGetLastError()));
 	/*printf("GetMatrixN Error Code: %s\n", cudaGetErrorString(cudaGetLastError()));*/
 	// time counting terminate
 	// cudaEvent_t start, stop;
@@ -413,7 +432,7 @@ int main() {
 
 	NormalTest << <1, 1 >> > (MatrixN, degree_u, degree_v, cp_u, cp_v, Gknots_u, Gknots_v, Gcontrol_points, Gweights, { 0.5, 0.5 });
 	cudaDeviceSynchronize();
-	printf("func test Error Code: %s\n", cudaGetErrorString(cudaGetLastError()));
+	//printf("func test Error Code: %s\n", cudaGetErrorString(cudaGetLastError()));
 
 #endif // FUNC_TEST
 

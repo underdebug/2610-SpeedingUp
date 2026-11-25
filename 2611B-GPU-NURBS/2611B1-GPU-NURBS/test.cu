@@ -87,12 +87,12 @@ __global__ void NormalTest(double* MatrixN, int degree_u, int degree_v, int cp_u
 
 	double3 P = homogenousToCartesian(R);
 	double3 PdU = MatrixSurfaceDerivativeU(RdU, P, R.w);
-	printf("RdU: ");
-	print(RdU);
-	printf("P: ");
-	print(P);
-	printf("R.w: ");
-	print(R.w);
+	//printf("RdU: ");
+	// print(RdU);
+	//printf("P: ");
+	//print(P);
+	//printf("R.w: ");
+	//print(R.w);
 	double3 PdV = MatrixSurfaceDerivativeV(RdV, P, R.w);
 	double3 PdUU = MatrixSurfaceDerivativeUU(RdUU, PdU, P, R.w, RdU.w);
 	double3 PdUV = MatrixSurfaceDerivativeUV(RdUV, PdU, PdV, P, R.w, RdU.w, RdV.w);
@@ -138,36 +138,36 @@ __global__ void NormalTest(double* MatrixN, int degree_u, int degree_v, int cp_u
 	double3 PdVV_u_offset = MatrixSurfaceDerivativeVV(middle, degree_u, degree_v, cp_u, cp_v, knots_u, knots_v, u_offset, v, R, spanU, spanV);
 	double3 PdVV_v_offset = MatrixSurfaceDerivativeVV(middle, degree_u, degree_v, cp_u, cp_v, knots_u, knots_v, u, v_offset, R, spanU, spanV);
 
-	printf("PdU: ");
-	print(PdU);
-	printf("PdV: ");
-	print(PdV);
+	// //printf("PdU: ");
+	// print(PdU);
+	// printf("PdV: ");
+	// print(PdV);
 
-	printf("PdUU: ");
-	print(PdUU);
-	printf("PdUV: ");
-	print(PdUV);
-	printf("PdVV: ");
-	print(PdVV);
+	// printf("PdUU: ");
+	// print(PdUU);
+	// printf("PdUV: ");
+	// print(PdUV);
+	// printf("PdVV: ");
+	// print(PdVV);
 
-	printf("Calculated PdUUU: ");
-	print(PdUUU);
-	/*printf("Estimated PdUUU: ");
-	print((PdUU_u_offset - PdUU) / offset);*/
-	printf("Calculated PdUUV: ");
-	print(PdUUV);
-	/*printf("Estimated PdUUV: ");
-	print((PdUU_v_offset - PdUU) / offset);*/
-	printf("Calculated PdUVV: ");
-	print(PdUVV);
-	/*printf("Estimated PdUVV: ");
-	print((PdVV_u_offset - PdVV) / offset);*/
-	printf("Calculated PdVVV: ");
-	print(PdVVV);
-	/*printf("Estimated PdVVV: ");
-	print((PdVV_v_offset - PdVV) / offset);*/
-	printf("Normal: ");
-	print(TrueNormal(middle, degree_u, degree_v, cp_u, cp_v, knots_u, knots_v, u, v, spanU, spanV));
+	// printf("Calculated PdUUU: ");
+	// // print(PdUUU);
+	// /*printf("Estimated PdUUU: ");
+	// print((PdUU_u_offset - PdUU) / offset);*/
+	// printf("Calculated PdUUV: ");
+	// print(PdUUV);
+	// /*printf("Estimated PdUUV: ");
+	// print((PdUU_v_offset - PdUU) / offset);*/
+	// printf("Calculated PdUVV: ");
+	// print(PdUVV);
+	// /*printf("Estimated PdUVV: ");
+	// print((PdVV_u_offset - PdVV) / offset);*/
+	// printf("Calculated PdVVV: ");
+	// print(PdVVV);
+	// /*printf("Estimated PdVVV: ");
+	// print((PdVV_v_offset - PdVV) / offset);*/
+	// printf("Normal: ");
+	// print(TrueNormal(middle, degree_u, degree_v, cp_u, cp_v, knots_u, knots_v, u, v, spanU, spanV));
 
     const int samples_u = cp_u, samples_v = cp_v;
     double3* normal = new double3[samples_u * samples_v];
@@ -202,12 +202,12 @@ __global__ void NormalTest(double* MatrixN, int degree_u, int degree_v, int cp_u
     delete[] display_points; 
 
 
-	printf("NdUU: ");
-	print(SurfaceNormalDerivativeUU(PdU, PdV, PdUU, PdUV, PdUUU, PdUUV));
-	printf("NdUV: ");
-	print(SurfaceNormalDerivativeUV(PdU, PdV, PdUU, PdUV, PdVV, PdUUV, PdUVV));
-	printf("NdVV: ");
-	print(SurfaceNormalDerivativeVV(PdU, PdV, PdUV, PdVV, PdUVV, PdVVV));
+	// printf("NdUU: ");
+	// print(SurfaceNormalDerivativeUU(PdU, PdV, PdUU, PdUV, PdUUU, PdUUV));
+	// printf("NdUV: ");
+	// print(SurfaceNormalDerivativeUV(PdU, PdV, PdUU, PdUV, PdVV, PdUUV, PdUVV));
+	// printf("NdVV: ");
+	// print(SurfaceNormalDerivativeVV(PdU, PdV, PdUV, PdVV, PdUVV, PdVVV));
 
 	double3 tmp = TruncateHomogenous(RdVVV);
 	print(tmp);
@@ -220,11 +220,11 @@ __global__ void NormalTest(double* MatrixN, int degree_u, int degree_v, int cp_u
 	tmp = tmp / R.w;
 	print(tmp);
 
-	printf("\n");
-	print(R);
-	print(RdV);
-	print(RdVV);
-	print(RdVVV);
+	// printf("\n");
+	// print(R);
+	// print(RdV);
+	// print(RdVV);
+	// print(RdVVV);
 }
 
 __global__ void print(half *a, int k1, int k2) {
