@@ -130,29 +130,6 @@ int main() {
     setvbuf(stdout, nullptr, _IONBF, 0);
     // tail -f log.txt
 
-	// const string logPath = "NURBS.log";
-	// freopen(logPath.c_str(), "w", stderr);
-	// setvbuf(stderr, nullptr, _IONBF, 0);
-
-	// const string watchLog = "tail -F --pid=\"$PPID\" -- " + logPath + " &";
-	// freopen(logPath.c_str(), "a", stdout);
-	// setvbuf(stdout, nullptr, _IOLBF, 0);
-
-	printf("111");
-
-	// const string logPath = "NURBS.log";
-	// if (FILE* log = fopen(logPath.c_str(), "w")) {
-	// 	fclose(log);
-	// 	const string watchLog = "tail -F --pid=\"$PPID\" -- " + logPath + " &";
-	// 	system(watchLog.c_str());
-	// 	if (freopen(logPath.c_str(), "a", stdout)) {
-	// 		setvbuf(stdout, nullptr, _IOLBF, 0);
-	// 	}
-	// 	if (freopen(logPath.c_str(), "a", stderr)) {
-	// 		setvbuf(stderr, nullptr, _IONBF, 0);
-	// 	}
-	// }
-
 	double *weights;
 	double3 *control_points;
 	double *knots_u, *knots_v;

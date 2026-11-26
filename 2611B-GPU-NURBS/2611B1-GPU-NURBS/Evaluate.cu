@@ -89,28 +89,11 @@ __global__ void GetMatrixN(double *MatrixN, int degree_u, int degree_v, int cp_u
 
 __device__ double Nrc(double* knot, int m, int r, int c, int j, int i, int d) {
     // -exec source Evaluate.cu_.py Nrc
-	int I = 2;
-	if(i == I){
-		printf("\nm(%d), r(%d), c(%d), j(%d), i(%d), d(%d)", m, r, c, j, i, d);
-	}
-
 	if (m == 0) {
-		//if (((i + c - 1) == (j + d)) && (r == 1))
-		if ((j == i - d + c - 1) && (r == 1)){
-			if (i == I && j == i - d + c - 1){
-				printf("-- 1");
-			}
-			if(i == I && r == 1){
-				printf("-- 2");
-			}
+		if (((i + c - 1) == (j + d)) && (r == 1))
 			return 1;
-		}
-		else{
-			if (i == I){
-				printf("-- 0");
-			}
+		else
 			return 0;
-		}
 	}
 	else {
 		return     Nabla(knot, d, i, 1)     / Nabla(knot, d, j, d - m + 1)  * Nrc(knot, m - 1, r - 1, c, j,     i, d)

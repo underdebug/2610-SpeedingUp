@@ -13,6 +13,12 @@ def Nrc():
 
     print(', '.join(f'{name}({mem(name)})' for name in ('m', 'r', 'c', 'j', 'i', 'd')))
 
+def NvT():
+    knot = mem('NvT', '', 20)
+    print('knot', knot)
+
+    print(', '.join(f'{name}({mem(name)})' for name in ('m', 'r', 'c', 'j', 'i', 'd')))
+
 def data():
     data = mem('data', '', 'kKnotCount')
     print('data', data)
